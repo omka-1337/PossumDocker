@@ -161,6 +161,9 @@ class DockerRuntime:
                     "Binds": [f"{volume_name(server_id)}:{spec.data_path}"],
                     "PortBindings": {port_key(p): [{"HostPort": str(p.host)}] for p in spec.ports},
                     "RestartPolicy": {"Name": "no"},
+                    # A tiny init as PID 1 forwards SIGTERM to the game; a game running as PID 1
+                    # itself would ignore it and only die from SIGKILL after the timeout.
+                    "Init": True,
                 },
             },
             name=name,

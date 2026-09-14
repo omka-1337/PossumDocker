@@ -36,8 +36,9 @@ install:
 runtime:
   # The steamcmd image already has the 32-bit libraries HLDS needs.
   image: steamcmd/steamcmd:latest
+  # hlds_linux, not the hlds_run wrapper: the wrapper restarts the server after `quit`.
   # "$@" passes the command items through as separate arguments, never re-parsed by the shell.
-  entrypoint: ["sh", "-c", 'cd /data && exec ./hlds_run "$@"', "hlds"]
+  entrypoint: ["sh", "-c", 'cd /data && LD_LIBRARY_PATH=. exec ./hlds_linux "$@"', "hlds"]
   command:
     - -game
     - cstrike

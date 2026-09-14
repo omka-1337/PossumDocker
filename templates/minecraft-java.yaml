@@ -1,0 +1,77 @@
+id: minecraft-java
+name: "Minecraft: Java Edition"
+description: Vanilla, Paper (plugins) or Fabric (mods).
+
+fields:
+  - id: loader
+    label: Server software
+    type: select
+    default: paper
+    options:
+      - { value: vanilla, label: Vanilla }
+      - { value: paper, label: Paper (plugins) }
+      - { value: fabric, label: Fabric (mods) }
+
+  - id: version
+    label: Minecraft version
+    type: select
+    required: true
+    options_from: minecraft.versions
+    depends_on: [loader]
+    on_change: reinstall
+
+  - id: loader_version
+    label: Fabric loader version
+    type: select
+    required: true
+    options_from: minecraft.loader_versions
+    depends_on: [loader, version]
+    visible_if: { loader: [fabric] }
+    on_change: reinstall
+
+  - id: memory_mb
+    label: Memory (MB)
+    type: number
+    default: 2048
+    min: 512
+    max: 65536
+    editable: true
+    on_change: restart
+
+  - id: eula
+    label: I accept the Minecraft EULA
+    type: boolean
+    must_be: true
+    help_url: https://aka.ms/MinecraftEULA
+
+  - id: rcon_password
+    label: RCON password
+    type: secret
+    generate: true
+    hidden: true
+
+ports:
+  - { name: game, container: 25565, protocol: tcp, default_host: 25565 }
+
+# Not used by the panel yet: rendered into a container spec in the install step.
+install:
+  image: itzg/minecraft-server:latest
+  env:
+    SETUP_ONLY: "true"
+
+runtime:
+  image: itzg/minecraft-server:latest
+  env:
+    EULA: "TRUE"
+    TYPE: "{{ loader | upper }}"
+    VERSION: "{{ version }}"
+    FABRIC_LOADER_VERSION: "{{ loader_version }}"
+    MEMORY: "{{ memory_mb }}M"
+    RCON_PASSWORD: "{{ rcon_password }}"
+  stop:
+    command: stop
+    timeout: 60
+  data_path: /data
+
+query:
+  protocol: minecraft

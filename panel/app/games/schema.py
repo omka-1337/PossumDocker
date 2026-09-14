@@ -1,0 +1,157 @@
+"""Pydantic models describing a game template (templates/*.yaml)."""
+
+from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)]
+
+
+class StrictModel(BaseModel):
+    # A typo in a template key should fail loudly instead of being silently ignored.
+    model_config = ConfigDict(extra="forbid")
+
+
+class Option(StrictModel):
+    value: str
+    label: str
+
+
+class BaseField(StrictModel):
+    id: Identifier
+    label: str
+    help: str | None = None
+    help_url: str | None = None
+    required: bool = False
+    # Shown only when every listed field has one of the listed values:
+    #   visible_if: {loader: [fabric, forge]}
+    visible_if: dict[str, list[Any]] | None = None
+    # Can the value be changed after the server is created, and what that costs.
+    editable: bool = False
+    on_change: Literal["none", "restart", "reinstall"] = "none"
+
+
+class StringField(BaseField):
+    type: Literal["string"]
+    default: str | None = None
+    min_length: int = 0
+    max_length: int = 256
+    pattern: str | None = None
+
+
+class NumberField(BaseField):
+    type: Literal["number"]
+    default: int | None = None
+    min: int | None = None
+    max: int | None = None
+
+
+class BooleanField(BaseField):
+    type: Literal["boolean"]
+    default: bool = False
+    # e.g. an EULA checkbox: the server can't be created unless it is ticked.
+    must_be: bool | None = None
+
+
+class SelectField(BaseField):
+    type: Literal["select"]
+    default: str | None = None
+    options: list[Option] = []
+    # Name of a registered options provider, for lists fetched at runtime (game versions).
+    options_from: str | None = None
+    # Values of these fields are passed to the provider; must be declared earlier.
+    depends_on: list[str] = []
+
+    @field_validator("options", mode="before")
+    @classmethod
+    def _expand_shorthand(cls, value: Any) -> Any:
+        # Allow `options: [de_dust2, de_nuke]` as shorthand for value == label.
+        if isinstance(value, list):
+            return [{"value": v, "label": v} if isinstance(v, str) else v for v in value]
+        return value
+
+    @model_validator(mode="after")
+    def _one_source(self) -> "SelectField":
+        if bool(self.options) == bool(self.options_from):
+            raise ValueError(f"select '{self.id}' needs exactly one of 'options' or 'options_from'")
+        if self.depends_on and not self.options_from:
+            raise ValueError(f"select '{self.id}': 'depends_on' only makes sense with options_from")
+        return self
+
+
+class SecretField(BaseField):
+    type: Literal["secret"]
+    generate: bool = False
+    length: int = Field(default=24, ge=8, le=128)
+    # Hidden secrets are never shown in the create form (e.g. an auto-generated RCON password).
+    hidden: bool = False
+
+
+TemplateField = Annotated[
+    StringField | NumberField | BooleanField | SelectField | SecretField,
+    Field(discriminator="type"),
+]
+
+
+class Port(StrictModel):
+    name: Identifier
+    container: int = Field(ge=1, le=65535)
+    protocol: Literal["tcp", "udp"]
+    default_host: int = Field(ge=1, le=65535)
+
+
+class StopSpec(StrictModel):
+    # Console command for a graceful stop; falls back to SIGTERM when unset.
+    command: str | None = None
+    timeout: int = 30
+
+
+class RuntimeSpec(StrictModel):
+    image: str
+    command: list[str] | None = None
+    env: dict[str, str] = {}
+    stop: StopSpec = StopSpec()
+    data_path: str = "/data"
+
+
+class InstallSpec(StrictModel):
+    image: str
+    # Path relative to the templates directory.
+    script: str | None = None
+    command: list[str] | None = None
+    env: dict[str, str] = {}
+
+
+class Template(StrictModel):
+    id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
+    name: str
+    description: str | None = None
+    icon: str | None = None
+    fields: list[TemplateField] = []
+    ports: list[Port] = []
+    install: InstallSpec | None = None
+    runtime: RuntimeSpec
+    query: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _check_references(self) -> "Template":
+        seen: set[str] = set()
+        for field in self.fields:
+            if field.id in seen:
+                raise ValueError(f"duplicate field id '{field.id}'")
+            refs = list((field.visible_if or {}).keys())
+            if isinstance(field, SelectField):
+                refs += field.depends_on
+            for ref in refs:
+                # Only earlier fields: validation walks fields in order.
+                if ref not in seen:
+                    raise ValueError(f"field '{field.id}' refers to '{ref}', which is not declared before it")
+            seen.add(field.id)
+
+        port_names = [p.name for p in self.ports]
+        if len(port_names) != len(set(port_names)):
+            raise ValueError("duplicate port name")
+        return self
+
+    def field(self, field_id: str) -> TemplateField | None:
+        return next((f for f in self.fields if f.id == field_id), None)

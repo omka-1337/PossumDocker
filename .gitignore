@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Node (web/.gitignore covers the rest)
+node_modules/
+
+# Runtime data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# Env / editors
+.env
+.idea/
+.vscode/

@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+/* Design tokens: use them as bg-panel, text-muted, border-line, ... */
+@theme {
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-frame: #101010; /* sidebar and the frame around the page */
+  --color-page: #000000;
+  --color-panel: #191919; /* buttons on the page, dialogs */
+  --color-raised: #242424; /* controls inside a panel */
+  --color-raised-hover: #2f2f2f;
+  --color-line: #383838;
+  --color-line-soft: #222222;
+  --color-muted: #8e8e8e;
+  --color-active: #e1e1e1; /* selected nav item, primary button */
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-frame font-mono text-zinc-100 antialiased;
+}
+
+/* Keyboard focus is visible, mouse clicks don't leave rings behind. */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-zinc-400;
+}

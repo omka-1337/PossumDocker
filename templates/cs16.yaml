@@ -1,0 +1,56 @@
+id: cs16
+name: Counter-Strike 1.6
+description: Classic GoldSrc server (HLDS).
+
+fields:
+  - id: map
+    label: Start map
+    type: select
+    default: de_dust2
+    options: [de_dust2, de_inferno, de_nuke, de_train, cs_office, cs_italy]
+    editable: true
+    on_change: restart
+
+  - id: max_players
+    label: Max players
+    type: number
+    default: 20
+    min: 2
+    max: 32
+    editable: true
+    on_change: restart
+
+  - id: amxmodx
+    label: Install Metamod + AMX Mod X
+    type: boolean
+    default: false
+    on_change: reinstall
+
+  - id: rcon_password
+    label: RCON password
+    type: secret
+    generate: true
+    hidden: true
+
+ports:
+  - { name: game, container: 27015, protocol: udp, default_host: 27015 }
+
+# Not used by the panel yet: rendered into a container spec in the install step.
+install:
+  image: steamcmd/steamcmd:latest
+  script: install/cs16.sh
+  env:
+    INSTALL_AMXMODX: "{{ amxmodx }}"
+
+runtime:
+  image: dgs/hlds-runtime:latest
+  command: ["./hlds_run", "-game", "cstrike", "+map", "{{ map }}", "+maxplayers", "{{ max_players }}"]
+  env:
+    RCON_PASSWORD: "{{ rcon_password }}"
+  stop:
+    command: quit
+    timeout: 15
+  data_path: /data
+
+query:
+  protocol: goldsrc

@@ -1,0 +1,102 @@
+// Mirrors the panel's Pydantic models (panel/app/games/schema.py, panel/app/api/*.py).
+// TODO: generate from /openapi.json once openapi-typescript supports TypeScript 6.
+
+export interface Option {
+  value: string
+  label: string
+}
+
+interface BaseField {
+  id: string
+  label: string
+  help: string | null
+  help_url: string | null
+  required: boolean
+  visible_if: Record<string, unknown[]> | null
+  editable: boolean
+  on_change: 'none' | 'restart' | 'reinstall'
+}
+
+export interface StringField extends BaseField {
+  type: 'string'
+  default: string | null
+  min_length: number
+  max_length: number
+  pattern: string | null
+}
+
+export interface NumberField extends BaseField {
+  type: 'number'
+  default: number | null
+  min: number | null
+  max: number | null
+}
+
+export interface BooleanField extends BaseField {
+  type: 'boolean'
+  default: boolean
+  must_be: boolean | null
+}
+
+export interface SelectField extends BaseField {
+  type: 'select'
+  default: string | null
+  options: Option[]
+  options_from: string | null
+  depends_on: string[]
+}
+
+export interface SecretField extends BaseField {
+  type: 'secret'
+  generate: boolean
+  length: number
+  hidden: boolean
+}
+
+// A "discriminated union": checking `field.type` tells TypeScript which fields exist.
+export type TemplateField = StringField | NumberField | BooleanField | SelectField | SecretField
+
+export interface Port {
+  name: string
+  container: number
+  protocol: 'tcp' | 'udp'
+  default_host: number
+}
+
+export interface TemplateSummary {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+}
+
+export interface TemplateDetail extends TemplateSummary {
+  fields: TemplateField[]
+  ports: Port[]
+}
+
+export type ServerStatus =
+  | 'pending'
+  | 'installing'
+  | 'install_failed'
+  | 'stopped'
+  | 'starting'
+  | 'running'
+  | 'stopping'
+
+export type FieldValues = Record<string, string | number | boolean>
+
+export interface Server {
+  id: string
+  name: string
+  template_id: string
+  values: FieldValues
+  status: ServerStatus
+  created_at: string
+}
+
+export interface ServerCreate {
+  template_id: string
+  name: string
+  values: FieldValues
+}

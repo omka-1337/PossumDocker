@@ -12,14 +12,13 @@ class Base(DeclarativeBase):
     pass
 
 
-class ServerStatus(enum.StrEnum):
-    PENDING = "pending"  # saved, not installed yet
+class ServerState(enum.StrEnum):
+    """Lifecycle stored in the database. Whether it's running is asked from Docker, not stored."""
+
+    PENDING = "pending"  # saved, install not started yet
     INSTALLING = "installing"
     INSTALL_FAILED = "install_failed"
-    STOPPED = "stopped"  # installed and ready to start
-    STARTING = "starting"
-    RUNNING = "running"
-    STOPPING = "stopping"
+    INSTALLED = "installed"  # container exists, ready to start
 
 
 class Server(Base):
@@ -30,15 +29,17 @@ class Server(Base):
     template_id: Mapped[str] = mapped_column(String(64), index=True)
     # Validated answers to the template's fields.
     values: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    status: Mapped[ServerStatus] = mapped_column(
+    # Host port per template port name: {"game": 25565}
+    ports: Mapped[dict[str, int]] = mapped_column(JSON, default=dict)
+    state: Mapped[ServerState] = mapped_column(
         SAEnum(
-            ServerStatus,
+            ServerState,
             native_enum=False,
             length=32,
             values_callable=lambda e: [m.value for m in e],  # store "pending", not "PENDING"
         ),
-        default=ServerStatus.PENDING,
+        default=ServerState.PENDING,
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(UTC)
-    )
+    # Why the last install failed, shown to the user.
+    state_message: Mapped[str | None] = mapped_column(String(1000), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

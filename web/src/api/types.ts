@@ -83,6 +83,10 @@ export type ServerStatus =
   | 'starting'
   | 'running'
   | 'stopping'
+  | 'unknown' // Docker is unreachable
+
+/** Statuses that change on their own, so the UI keeps polling while in them. */
+export const TRANSITIONAL: ServerStatus[] = ['installing', 'starting', 'stopping']
 
 export type FieldValues = Record<string, string | number | boolean>
 
@@ -91,7 +95,11 @@ export interface Server {
   name: string
   template_id: string
   values: FieldValues
+  // Host port per template port name: { game: 25565 }
+  ports: Record<string, number>
   status: ServerStatus
+  // Why the last install failed.
+  status_message: string | null
   created_at: string
 }
 

@@ -106,20 +106,35 @@ class StopSpec(StrictModel):
     timeout: int = 30
 
 
+# Every string below is a Jinja template rendered with the field values, e.g. "{{ version }}".
+
+
 class RuntimeSpec(StrictModel):
     image: str
+    entrypoint: list[str] | None = None
     command: list[str] | None = None
     env: dict[str, str] = {}
     stop: StopSpec = StopSpec()
+    # Where the server's data volume is mounted.
     data_path: str = "/data"
 
 
 class InstallSpec(StrictModel):
+    """A one-off container that prepares the data volume, then exits."""
+
     image: str
-    # Path relative to the templates directory.
+    # Shell script, path relative to the templates directory. Runs with `sh`.
     script: str | None = None
+    entrypoint: list[str] | None = None
     command: list[str] | None = None
+    # Merged over runtime.env, so the installer knows the version, loader etc.
     env: dict[str, str] = {}
+
+    @model_validator(mode="after")
+    def _script_or_command(self) -> "InstallSpec":
+        if self.script and (self.command or self.entrypoint):
+            raise ValueError("install: use either 'script' or 'entrypoint'/'command'")
+        return self
 
 
 class Template(StrictModel):

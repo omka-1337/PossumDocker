@@ -8,6 +8,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router'
 import { Layout } from './components/Layout.tsx'
 import './index.css'
 import { AboutPage } from './pages/AboutPage.tsx'
+import { ServerPage } from './pages/ServerPage.tsx'
 import { ServersPage } from './pages/ServersPage.tsx'
 
 const queryClient = new QueryClient({
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { path: '/', element: <ServersPage /> },
+      { path: '/servers/:serverId', element: <ServerPage /> },
       { path: '/about', element: <AboutPage /> },
     ],
   },

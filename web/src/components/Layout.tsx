@@ -1,5 +1,5 @@
 import { IconInfoCircle, IconServer2, type Icon } from '@tabler/icons-react'
-import { NavLink, Outlet } from 'react-router'
+import { Link, Outlet, useLocation } from 'react-router'
 
 export function Layout() {
   return (
@@ -9,7 +9,8 @@ export function Layout() {
         <div className="mb-4 hidden text-center text-2xl font-semibold tracking-tighter sm:block" aria-hidden>
           &gt;_
         </div>
-        <NavItem to="/" icon={IconServer2} label="servers" />
+        {/* A server's page belongs to "servers" too. */}
+        <NavItem to="/" matches={(path) => path === '/' || path.startsWith('/servers/')} icon={IconServer2} label="servers" />
         <div className="hidden flex-1 sm:block" />
         <NavItem to="/about" icon={IconInfoCircle} label="about" />
       </nav>
@@ -21,19 +22,25 @@ export function Layout() {
   )
 }
 
-function NavItem({ to, icon: Icon, label }: { to: string; icon: Icon; label: string }) {
+interface NavItemProps {
+  to: string
+  icon: Icon
+  label: string
+  matches?: (pathname: string) => boolean
+}
+
+function NavItem({ to, icon: Icon, label, matches = (path) => path === to }: NavItemProps) {
+  const active = matches(useLocation().pathname)
   return (
-    <NavLink
+    <Link
       to={to}
-      end
-      className={({ isActive }) =>
-        `flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-xs transition sm:px-1 ${
-          isActive ? 'bg-active text-black' : 'text-zinc-300 hover:bg-panel'
-        }`
-      }
+      aria-current={active ? 'page' : undefined}
+      className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-xs transition sm:px-1 ${
+        active ? 'bg-active text-black' : 'text-zinc-300 hover:bg-panel'
+      }`}
     >
       <Icon size={22} stroke={1.5} />
       {label}
-    </NavLink>
+    </Link>
   )
 }

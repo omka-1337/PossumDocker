@@ -141,6 +141,7 @@ const statusDot: Record<ServerStatus, string> = {
   starting: 'bg-amber-400 animate-pulse',
   running: 'bg-emerald-400',
   stopping: 'bg-amber-400 animate-pulse',
+  unknown: 'bg-zinc-700',
 }
 
 export function StatusBadge({ status }: { status: ServerStatus }) {

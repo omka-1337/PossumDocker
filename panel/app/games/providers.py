@@ -65,9 +65,7 @@ async def minecraft_versions(client: httpx.AsyncClient, params: dict[str, Any]) 
     return [Option(value=i, label=i) for i in ids]
 
 
-async def minecraft_loader_versions(
-    client: httpx.AsyncClient, params: dict[str, Any]
-) -> list[Option]:
+async def minecraft_loader_versions(client: httpx.AsyncClient, params: dict[str, Any]) -> list[Option]:
     version = params.get("version")
     if params.get("loader") != "fabric" or not version:
         return []

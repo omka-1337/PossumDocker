@@ -1,13 +1,15 @@
-import { IconDeviceGamepad2, IconPlus, IconTrash } from '@tabler/icons-react'
+import { IconChevronRight, IconDeviceGamepad2, IconPlus } from '@tabler/icons-react'
 import { useState, type ReactNode } from 'react'
-import { useDeleteServer, useServers, useTemplates } from '../api/queries'
+import { Link, useNavigate } from 'react-router'
+import { useServers, useTemplates } from '../api/queries'
 import type { Server } from '../api/types'
 import { CreateServerDialog } from '../components/CreateServerDialog'
-import { Button, IconButton, Modal, StatusBadge } from '../components/ui'
+import { Button, StatusBadge } from '../components/ui'
 
 export function ServersPage() {
   const [creating, setCreating] = useState(false)
   const { data: servers, isPending, isError } = useServers()
+  const navigate = useNavigate()
 
   return (
     <div className="flex min-h-full flex-col px-4 py-5">
@@ -48,7 +50,13 @@ export function ServersPage() {
         </ul>
       )}
 
-      {creating && <CreateServerDialog onClose={() => setCreating(false)} onCreated={() => setCreating(false)} />}
+      {creating && (
+        <CreateServerDialog
+          onClose={() => setCreating(false)}
+          // Straight to the new server's page, where the install progress is shown.
+          onCreated={(server) => navigate(`/servers/${server.id}`)}
+        />
+      )}
     </div>
   )
 }
@@ -58,45 +66,25 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 function ServerRow({ server }: { server: Server }) {
-  const [confirming, setConfirming] = useState(false)
   const { data: templates } = useTemplates()
-  const deleteServer = useDeleteServer()
   const game = templates?.find((t) => t.id === server.template_id)?.name ?? server.template_id
 
   return (
-    <li className="flex items-center gap-3 rounded-2xl bg-panel p-3">
-      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-page">
-        <IconDeviceGamepad2 size={22} stroke={1.5} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{server.name}</div>
-        <div className="truncate text-xs text-muted lowercase">{game}</div>
-      </div>
-      <StatusBadge status={server.status} />
-      <IconButton onClick={() => setConfirming(true)} aria-label={`delete ${server.name}`}>
-        <IconTrash size={18} />
-      </IconButton>
-
-      {confirming && (
-        <Modal title="delete server?" onClose={() => setConfirming(false)}>
-          <p className="mb-5 text-sm text-muted">
-            <span className="text-zinc-100">{server.name}</span> will be removed from the panel.
-          </p>
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={() => setConfirming(false)}>
-              cancel
-            </Button>
-            <Button
-              variant="danger"
-              className="flex-1"
-              disabled={deleteServer.isPending}
-              onClick={() => deleteServer.mutate(server.id, { onSuccess: () => setConfirming(false) })}
-            >
-              delete
-            </Button>
-          </div>
-        </Modal>
-      )}
+    <li>
+      <Link
+        to={`/servers/${server.id}`}
+        className="group flex items-center gap-3 rounded-2xl bg-panel p-3 transition hover:bg-raised"
+      >
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-page">
+          <IconDeviceGamepad2 size={22} stroke={1.5} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium">{server.name}</div>
+          <div className="truncate text-xs text-muted lowercase">{game}</div>
+        </div>
+        <StatusBadge status={server.status} />
+        <IconChevronRight size={18} className="text-muted transition group-hover:translate-x-0.5" />
+      </Link>
     </li>
   )
 }

@@ -53,14 +53,14 @@ fields:
 ports:
   - { name: game, container: 25565, protocol: tcp, default_host: 25565 }
 
-# Not used by the panel yet: rendered into a container spec in the install step.
+# Same image, but only downloads the server and exits: "create" leaves a ready-to-start server.
 install:
-  image: itzg/minecraft-server:latest
+  image: "itzg/minecraft-server:{{ minecraft_java_tag(version) }}"
   env:
     SETUP_ONLY: "true"
 
 runtime:
-  image: itzg/minecraft-server:latest
+  image: "itzg/minecraft-server:{{ minecraft_java_tag(version) }}"
   env:
     EULA: "TRUE"
     TYPE: "{{ loader | upper }}"

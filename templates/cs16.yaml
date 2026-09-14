@@ -20,12 +20,6 @@ fields:
     editable: true
     on_change: restart
 
-  - id: amxmodx
-    label: Install Metamod + AMX Mod X
-    type: boolean
-    default: false
-    on_change: reinstall
-
   - id: rcon_password
     label: RCON password
     type: secret
@@ -35,18 +29,26 @@ fields:
 ports:
   - { name: game, container: 27015, protocol: udp, default_host: 27015 }
 
-# Not used by the panel yet: rendered into a container spec in the install step.
 install:
   image: steamcmd/steamcmd:latest
   script: install/cs16.sh
-  env:
-    INSTALL_AMXMODX: "{{ amxmodx }}"
 
 runtime:
-  image: dgs/hlds-runtime:latest
-  command: ["./hlds_run", "-game", "cstrike", "+map", "{{ map }}", "+maxplayers", "{{ max_players }}"]
-  env:
-    RCON_PASSWORD: "{{ rcon_password }}"
+  # The steamcmd image already has the 32-bit libraries HLDS needs.
+  image: steamcmd/steamcmd:latest
+  # "$@" passes the command items through as separate arguments, never re-parsed by the shell.
+  entrypoint: ["sh", "-c", 'cd /data && exec ./hlds_run "$@"', "hlds"]
+  command:
+    - -game
+    - cstrike
+    - -port
+    - "27015"
+    - +map
+    - "{{ map }}"
+    - +maxplayers
+    - "{{ max_players }}"
+    - +rcon_password
+    - "{{ rcon_password }}"
   stop:
     command: quit
     timeout: 15

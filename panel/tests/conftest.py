@@ -31,6 +31,7 @@ class FakeRuntime:
         self.specs: dict[str, ContainerSpec] = {}
         self.installed: list[str] = []
         self.commands: list[tuple[str, str]] = []
+        self.log_lines: dict[str, list[str]] = {}
         self.fail_install = False
 
     async def states(self):
@@ -63,6 +64,13 @@ class FakeRuntime:
 
     async def send_command(self, server_id, line):
         self.commands.append((server_id, line))
+        self.log_lines.setdefault(server_id, []).append(f"> {line}\n")
+
+    async def logs(self, server_id, tail=200, since=0):
+        if since:  # like Docker: nothing newer than the previous stream
+            return
+        for line in self.log_lines.get(server_id, []):
+            yield line
 
     async def remove(self, server_id):
         self.containers.pop(server_id, None)

@@ -6,7 +6,7 @@ import {
   IconRefresh,
   IconTrash,
 } from '@tabler/icons-react'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
   useDeleteServer,
@@ -19,6 +19,9 @@ import {
 import type { Server } from '../api/types'
 import { Button, Modal, StatusBadge } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
+
+// xterm.js is big: load it only when a console is actually shown.
+const Console = lazy(() => import('../components/Console').then((m) => ({ default: m.Console })))
 
 export function ServerPage() {
   const { serverId } = useParams() as { serverId: string }
@@ -63,7 +66,15 @@ function ServerView({ server }: { server: Server }) {
       {server.status_message && (
         <p className="mb-4 rounded-xl bg-red-950/40 px-3 py-2.5 text-sm text-red-300">{server.status_message}</p>
       )}
-      {installing && <InstallLog serverId={server.id} live={server.status === 'installing'} />}
+      {installing ? (
+        <InstallLog serverId={server.id} live={server.status === 'installing'} />
+      ) : (
+        server.status !== 'pending' && (
+          <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
+            <Console serverId={server.id} running={server.status === 'running' || server.status === 'starting'} />
+          </Suspense>
+        )
+      )}
 
       <DangerZone server={server} />
     </div>

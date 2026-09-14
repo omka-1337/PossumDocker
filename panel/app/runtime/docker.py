@@ -201,9 +201,16 @@ class DockerRuntime:
             # Closing our attach doesn't close the container's stdin (StdinOnce is false).
             await stream.close()
 
-    async def logs(self, server_id: str, tail: int = 200) -> AsyncIterator[str]:
-        container = await self._docker.containers.get(container_name(server_id))
-        async for line in container.log(stdout=True, stderr=True, follow=True, tail=tail):
+    async def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]:
+        """Follow the console output. Ends when the container stops. Nothing if it doesn't exist."""
+        try:
+            container = await self._docker.containers.get(container_name(server_id))
+        except DockerError as exc:
+            if exc.status == 404:
+                return
+            raise
+        params = {"tail": "all" if tail is None else str(tail), "since": since}
+        async for line in container.log(stdout=True, stderr=True, follow=True, **params):
             yield line
 
     async def remove(self, server_id: str) -> None:

@@ -32,6 +32,7 @@ class FakeRuntime:
         self.installed: list[str] = []
         self.commands: list[tuple[str, str]] = []
         self.log_lines: dict[str, list[str]] = {}
+        self.files: dict[tuple[str, str], bytes] = {}
         self.fail_install = False
 
     async def states(self):
@@ -65,6 +66,12 @@ class FakeRuntime:
     async def send_command(self, server_id, line):
         self.commands.append((server_id, line))
         self.log_lines.setdefault(server_id, []).append(f"> {line}\n")
+
+    async def read_file(self, server_id, path):
+        return self.files.get((server_id, path))
+
+    async def write_file(self, server_id, path, data):
+        self.files[(server_id, path)] = data
 
     async def logs(self, server_id, tail=200, since=0):
         if since:  # like Docker: nothing newer than the previous stream

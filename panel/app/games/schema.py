@@ -137,6 +137,50 @@ class InstallSpec(StrictModel):
         return self
 
 
+class ConfigHint(StrictModel):
+    """How to present one key of a config file. Keys without a hint are shown as plain text."""
+
+    label: str
+    type: Literal["string", "number", "boolean", "select"] = "string"
+    help: str | None = None
+    options: list[str] = []
+    min: int | None = None
+    max: int | None = None
+    # How the game spells booleans: "true"/"false" for Minecraft, "1"/"0" for GoldSrc cvars.
+    true_value: str = "true"
+    false_value: str = "false"
+
+    @model_validator(mode="after")
+    def _options_for_select(self) -> "ConfigHint":
+        if (self.type == "select") != bool(self.options):
+            raise ValueError(f"hint '{self.label}': 'options' is required for select and only for it")
+        return self
+
+
+class ConfigFile(StrictModel):
+    """A config file the panel lets users edit (server.properties, server.cfg...).
+
+    The file itself is the source of truth: whatever keys this game version wrote are shown.
+    Hints only make known keys nicer to edit.
+    """
+
+    id: Identifier
+    label: str
+    # Relative to runtime.data_path.
+    path: Annotated[str, Field(pattern=r"^[\w./-]+$")]
+    format: Literal["properties", "cvars"]
+    # Set by the panel itself (ports, RCON password): shown, but not editable.
+    managed: list[str] = []
+    hints: dict[str, ConfigHint] = {}
+
+    @field_validator("path")
+    @classmethod
+    def _stay_inside_data_path(cls, path: str) -> str:
+        if path.startswith("/") or ".." in path.split("/"):
+            raise ValueError("path must be relative and stay inside the data directory")
+        return path
+
+
 class Template(StrictModel):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
     name: str
@@ -146,7 +190,11 @@ class Template(StrictModel):
     ports: list[Port] = []
     install: InstallSpec | None = None
     runtime: RuntimeSpec
+    config_files: list[ConfigFile] = []
     query: dict[str, Any] | None = None
+
+    def config_file(self, config_id: str) -> ConfigFile | None:
+        return next((c for c in self.config_files if c.id == config_id), None)
 
     @model_validator(mode="after")
     def _check_references(self) -> "Template":
@@ -166,6 +214,9 @@ class Template(StrictModel):
         port_names = [p.name for p in self.ports]
         if len(port_names) != len(set(port_names)):
             raise ValueError("duplicate port name")
+        config_ids = [c.id for c in self.config_files]
+        if len(config_ids) != len(set(config_ids)):
+            raise ValueError("duplicate config file id")
         return self
 
     def field(self, field_id: str) -> TemplateField | None:

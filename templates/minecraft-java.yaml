@@ -73,5 +73,30 @@ runtime:
     timeout: 60
   data_path: /data
 
+config_files:
+  - id: server_properties
+    label: Server properties
+    path: server.properties
+    format: properties
+    # Container port and RCON are wired up by the panel.
+    managed: [server-port, enable-rcon, rcon.port, rcon.password, query.port]
+    # Only keys present in the file are shown, so versions that dropped or renamed one are fine.
+    hints:
+      motd: { label: Message of the day }
+      # The world stores its own difficulty: this value only seeds new worlds.
+      difficulty: { label: Difficulty, type: select, options: [peaceful, easy, normal, hard], help: "For a new world. In an existing one use the console: difficulty hard" }
+      gamemode: { label: Default game mode, type: select, options: [survival, creative, adventure, spectator], help: For players joining for the first time. }
+      hardcore: { label: Hardcore, type: boolean, help: For a new world. }
+      pvp: { label: PvP, type: boolean }
+      max-players: { label: Max players, type: number, min: 1, max: 1000 }
+      online-mode: { label: Online mode, type: boolean, help: "Check accounts with Mojang. Turn off only for offline/LAN play." }
+      white-list: { label: Whitelist, type: boolean }
+      allow-flight: { label: Allow flight, type: boolean }
+      allow-nether: { label: Allow the Nether, type: boolean }
+      spawn-protection: { label: Spawn protection radius, type: number, min: 0, max: 1000 }
+      view-distance: { label: View distance, type: number, min: 2, max: 32 }
+      simulation-distance: { label: Simulation distance, type: number, min: 3, max: 32 }
+      level-seed: { label: World seed, help: Only used when a new world is generated. }
+
 query:
   protocol: minecraft

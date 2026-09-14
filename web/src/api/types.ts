@@ -108,3 +108,36 @@ export interface ServerCreate {
   name: string
   values: FieldValues
 }
+
+// Config files (panel/app/api/configs.py)
+
+export interface ConfigSummary {
+  id: string
+  label: string
+  path: string
+}
+
+export interface ConfigHint {
+  label: string
+  type: 'string' | 'number' | 'boolean' | 'select'
+  help: string | null
+  options: string[]
+  min: number | null
+  max: number | null
+  true_value: string
+  false_value: string
+}
+
+export interface ConfigEntry {
+  key: string
+  value: string
+  hint: ConfigHint | null
+  // Set by the panel (ports, RCON): read-only.
+  managed: boolean
+}
+
+export interface ConfigRead extends ConfigSummary {
+  // False until the game writes the file, usually on its first start.
+  exists: boolean
+  entries: ConfigEntry[]
+}

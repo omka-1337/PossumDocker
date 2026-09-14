@@ -5,9 +5,13 @@ talks to the agent instead. Keep everything Docker-specific inside this module.
 """
 
 import asyncio
+import io
 import json
 import logging
+import posixpath
 import re
+import tarfile
+import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Literal
@@ -212,6 +216,43 @@ class DockerRuntime:
         params = {"tail": "all" if tail is None else str(tail), "since": since}
         async for line in container.log(stdout=True, stderr=True, follow=True, **params):
             yield line
+
+    # --- files ---------------------------------------------------------------
+    # Through the Docker archive API: works on stopped containers and needs no host paths,
+    # so it behaves the same when the panel itself runs in a container.
+
+    async def read_file(self, server_id: str, path: str) -> bytes | None:
+        """Contents of an absolute path inside the server container, or None if there's no such file."""
+        container = await self._docker.containers.get(container_name(server_id))
+        try:
+            archive = await container.get_archive(path)
+        except DockerError as exc:
+            if exc.status == 404:
+                return None
+            raise
+        with archive:
+            member = next((m for m in archive.getmembers() if m.isfile()), None)
+            if member is None:
+                return None
+            return archive.extractfile(member).read()
+
+    async def write_file(self, server_id: str, path: str, data: bytes) -> None:
+        """Replace a file, keeping its owner and mode (game servers rarely run as root)."""
+        container = await self._docker.containers.get(container_name(server_id))
+        info = tarfile.TarInfo(posixpath.basename(path))
+        info.size, info.mtime, info.mode, info.uid, info.gid = len(data), int(time.time()), 0o644, 0, 0
+        try:
+            with await container.get_archive(path) as existing:
+                if old := next((m for m in existing.getmembers() if m.isfile()), None):
+                    info.mode, info.uid, info.gid = old.mode, old.uid, old.gid
+        except DockerError as exc:
+            if exc.status != 404:
+                raise
+
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as tar:
+            tar.addfile(info, io.BytesIO(data))
+        await container.put_archive(posixpath.dirname(path), buffer.getvalue())
 
     async def remove(self, server_id: str) -> None:
         """Remove the containers and the data volume. Irreversible."""

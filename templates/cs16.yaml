@@ -54,5 +54,22 @@ runtime:
     timeout: 15
   data_path: /data
 
+config_files:
+  - id: server_cfg
+    label: server.cfg
+    path: cstrike/server.cfg
+    format: cvars
+    # Passed on the command line by the panel; a value here would override it.
+    managed: [rcon_password]
+    hints:
+      hostname: { label: Server name in the browser }
+      sv_password: { label: Join password, help: Leave empty for a public server. }
+      mp_timelimit: { label: Map time limit (minutes), type: number, min: 0, max: 1440 }
+      mp_roundtime: { label: Round time (minutes) }
+      mp_freezetime: { label: Freeze time (seconds), type: number, min: 0, max: 60 }
+      mp_friendlyfire: { label: Friendly fire, type: boolean, true_value: "1", false_value: "0" }
+      mp_autoteambalance: { label: Auto team balance, type: boolean, true_value: "1", false_value: "0" }
+      sv_alltalk: { label: All talk, type: boolean, true_value: "1", false_value: "0" }
+
 query:
   protocol: goldsrc

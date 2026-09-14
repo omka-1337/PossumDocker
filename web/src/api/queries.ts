@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import {
   TRANSITIONAL,
+  type ConfigRead,
+  type ConfigSummary,
   type Option,
   type Server,
   type ServerCreate,
@@ -18,6 +20,8 @@ const keys = {
   servers: ['servers'] as const,
   server: (id: string) => ['servers', id] as const,
   installLog: (id: string) => ['servers', id, 'install-log'] as const,
+  configs: (id: string) => ['servers', id, 'configs'] as const,
+  config: (id: string, configId: string) => ['servers', id, 'configs', configId] as const,
 }
 
 const POLL_MS = 1500
@@ -109,6 +113,32 @@ export function useServerAction(id: string) {
   return useMutation({
     mutationFn: (action: ServerAction) => api<Server>(`/servers/${id}/${action}`, { method: 'POST' }),
     onSuccess: update,
+  })
+}
+
+export function useConfigs(serverId: string) {
+  return useQuery({
+    queryKey: keys.configs(serverId),
+    queryFn: () => api<ConfigSummary[]>(`/servers/${serverId}/configs`),
+  })
+}
+
+export function useConfig(serverId: string, configId: string) {
+  return useQuery({
+    queryKey: keys.config(serverId, configId),
+    queryFn: () => api<ConfigRead>(`/servers/${serverId}/configs/${configId}`),
+  })
+}
+
+export function useUpdateConfig(serverId: string, configId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (values: Record<string, string>) =>
+      api<ConfigRead>(`/servers/${serverId}/configs/${configId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ values }),
+      }),
+    onSuccess: (config) => queryClient.setQueryData(keys.config(serverId, configId), config),
   })
 }
 

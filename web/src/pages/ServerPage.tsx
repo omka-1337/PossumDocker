@@ -9,6 +9,7 @@ import {
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
+  useConfigs,
   useDeleteServer,
   useInstallLog,
   useServer,
@@ -17,7 +18,8 @@ import {
   type ServerAction,
 } from '../api/queries'
 import type { Server } from '../api/types'
-import { Button, Modal, StatusBadge } from '../components/ui'
+import { ConfigEditor } from '../components/ConfigEditor'
+import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
 
 // xterm.js is big: load it only when a console is actually shown.
@@ -69,15 +71,34 @@ function ServerView({ server }: { server: Server }) {
       {installing ? (
         <InstallLog serverId={server.id} live={server.status === 'installing'} />
       ) : (
-        server.status !== 'pending' && (
-          <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
-            <Console serverId={server.id} running={server.status === 'running' || server.status === 'starting'} />
-          </Suspense>
-        )
+        server.status !== 'pending' && <InstalledTabs server={server} />
       )}
 
       <DangerZone server={server} />
     </div>
+  )
+}
+
+function InstalledTabs({ server }: { server: Server }) {
+  const { data: configs = [] } = useConfigs(server.id)
+  // "console" or a config file id.
+  const [tab, setTab] = useState('console')
+
+  return (
+    <>
+      <Tabs
+        tabs={[{ value: 'console', label: 'console' }, ...configs.map((c) => ({ value: c.id, label: c.label }))]}
+        value={tab}
+        onChange={setTab}
+      />
+      {tab === 'console' ? (
+        <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
+          <Console serverId={server.id} running={server.status === 'running' || server.status === 'starting'} />
+        </Suspense>
+      ) : (
+        <ConfigEditor key={tab} server={server} configId={tab} />
+      )}
+    </>
   )
 }
 

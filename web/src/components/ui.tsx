@@ -106,6 +106,34 @@ export function Segmented({
   )
 }
 
+export function Tabs<T extends string>({
+  tabs,
+  value,
+  onChange,
+}: {
+  tabs: { value: T; label: string }[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  return (
+    <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto">
+      {tabs.map((tab) => (
+        <button
+          key={tab.value}
+          role="tab"
+          aria-selected={tab.value === value}
+          onClick={() => onChange(tab.value)}
+          className={`shrink-0 rounded-xl px-3 py-2 text-sm lowercase transition ${
+            tab.value === value ? 'bg-active text-black' : 'text-zinc-300 hover:bg-panel'
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function Switch({
   id,
   checked,

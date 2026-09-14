@@ -3,6 +3,7 @@
 import asyncio
 import enum
 import logging
+import posixpath
 from collections import deque
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -11,7 +12,8 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.games.schema import Template
+from app.games.configs import ConfigDocument
+from app.games.schema import ConfigFile, Template
 from app.models import Server, ServerState
 from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
 from app.runtime.spec import ContainerSpec, build_spec
@@ -33,6 +35,8 @@ class Runtime(Protocol):
     async def start(self, server_id: str) -> None: ...
     async def stop(self, server_id: str, command: str | None, timeout: int) -> None: ...
     async def send_command(self, server_id: str, line: str) -> None: ...
+    async def read_file(self, server_id: str, path: str) -> bytes | None: ...
+    async def write_file(self, server_id: str, path: str, data: bytes) -> None: ...
     def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]: ...
     async def remove(self, server_id: str) -> None: ...
 
@@ -200,11 +204,14 @@ class ServerManager:
         await self._start(server)
 
     async def _start(self, server: Server) -> None:
+        await self._ensure_container(server)
+        await self.runtime.start(server.id)
+
+    async def _ensure_container(self, server: Server) -> None:
         if await self.runtime.state(server.id) is None:
             # Removed outside the panel: rebuild it, the data volume is untouched.
             spec = build_spec(self._templates[server.template_id], server, self._templates_dir)
             await self.runtime.create(server.id, spec.runtime)
-        await self.runtime.start(server.id)
 
     async def stop(self, server: Server) -> None:
         self._require_installed(server)
@@ -236,6 +243,28 @@ class ServerManager:
 
     async def send_command(self, server: Server, line: str) -> None:
         await self.runtime.send_command(server.id, line)
+
+    # --- config files --------------------------------------------------------
+
+    def _config_path(self, server: Server, config: ConfigFile) -> str:
+        return posixpath.join(self._templates[server.template_id].runtime.data_path, config.path)
+
+    async def read_config(self, server: Server, config: ConfigFile) -> ConfigDocument | None:
+        """None until the game has written the file (usually on its first start)."""
+        if server.state != ServerState.INSTALLED:
+            raise ServerBusy("the server is not installed")
+        await self._ensure_container(server)
+        data = await self.runtime.read_file(server.id, self._config_path(server, config))
+        return None if data is None else ConfigDocument(config.format, data)
+
+    async def write_config(
+        self, server: Server, config: ConfigFile, values: dict[str, str]
+    ) -> ConfigDocument:
+        document = await self.read_config(server, config) or ConfigDocument(config.format, b"")
+        for key, value in values.items():
+            document.set(key, value)
+        await self.runtime.write_file(server.id, self._config_path(server, config), document.render())
+        return document
 
     async def delete(self, server: Server) -> None:
         task = self._tasks.get(server.id)

@@ -101,7 +101,7 @@ export function FieldError({ error }: { error?: string }) {
   return error ? <p className="mt-1.5 text-xs text-red-400">{error}</p> : null
 }
 
-function Select({
+export function Select({
   id,
   options,
   value,

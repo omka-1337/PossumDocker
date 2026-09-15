@@ -1,0 +1,79 @@
+id: factorio
+name: Factorio
+description: Headless server; a new world is generated on the first start.
+color: "#b8651f"
+# Icon and cover art come from Steam at runtime.
+steam_appid: 427520
+
+fields:
+  - id: version
+    label: Version
+    type: select
+    default: stable
+    options:
+      - { value: stable, label: Stable }
+      - { value: latest, label: Latest (experimental) }
+    help: A save made by a newer version can't be loaded by an older one.
+    editable: true
+    on_change: restart
+
+  - id: space_age
+    label: Space Age expansion
+    type: boolean
+    default: true
+    help: Players need to own the expansion to join.
+    editable: true
+    on_change: restart
+
+ports:
+  # No container port: Factorio listens on the port players use, so its server list entry is right.
+  - { name: game, protocol: udp, default_host: 34197 }
+
+runtime:
+  image: "factoriotools/factorio:{{ version }}"
+  env:
+    PORT: "{{ ports.game }}"
+    GENERATE_NEW_SAVE: "true"
+    SAVE_NAME: world
+    LOAD_LATEST_SAVE: "true"
+    DLC_SPACE_AGE: "{{ space_age | lower }}"
+  stop:
+    # Saves the map, then exits.
+    command: /quit
+    timeout: 60
+  data_path: /factorio
+
+config_files:
+  - id: server_settings
+    label: Server settings
+    path: config/server-settings.json
+    format: json
+    hints:
+      name: { label: Server name }
+      description: { label: Description }
+      game_password: { label: Join password, help: Leave empty for no password. }
+      max_players: { label: Max players, type: number, min: 0, max: 65535, help: 0 means unlimited. }
+      visibility.public:
+        label: List in the public server browser
+        type: boolean
+        help: Needs a factorio.com username and token below.
+      visibility.lan: { label: Show on the local network, type: boolean }
+      username: { label: factorio.com username }
+      token: { label: factorio.com token, help: "From factorio.com/profile. Stored in this file as plain text." }
+      require_user_verification: { label: Only players with a factorio.com account, type: boolean }
+      autosave_interval: { label: Autosave every (minutes), type: number, min: 1, max: 1440 }
+      autosave_slots: { label: Autosave slots, type: number, min: 1, max: 100 }
+      afk_autokick_interval: { label: Kick AFK players after (minutes), type: number, min: 0, max: 1440, help: 0 turns it off. }
+      auto_pause: { label: Pause when nobody is online, type: boolean }
+      only_admins_can_pause_the_game: { label: Only admins can pause, type: boolean }
+
+backup:
+  # The game itself is in the image; keep the worlds and what admins change.
+  paths: [saves, config, mods, scenarios]
+
+console:
+  # "   1.324 Error ServerMultiplayerManager.cpp:743: ..."
+  highlight:
+    - { pattern: '^\s*\d+\.\d+ Error ', color: red }
+    - { pattern: '^\s*\d+\.\d+ Warning ', color: yellow }
+    - { pattern: '^\+ ', color: gray }

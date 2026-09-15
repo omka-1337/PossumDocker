@@ -64,6 +64,10 @@ async def _load(server_id: str, config_id: str, session: Session, templates: Tem
 def _docker_errors(exc: Exception) -> HTTPException:
     if isinstance(exc, ServerBusy):
         return HTTPException(409, str(exc))
+    if isinstance(exc, ConfigValuesError):
+        return HTTPException(422, {"errors": exc.errors})
+    if isinstance(exc, ValueError):  # a broken file, e.g. invalid JSON
+        return HTTPException(422, str(exc))
     return HTTPException(503, f"docker: {exc}")
 
 
@@ -84,7 +88,7 @@ async def get_config(
     server, config = await _load(server_id, config_id, session, templates)
     try:
         return to_read(config, await manager.read_config(server, config))
-    except (ServerBusy, RuntimeUnavailable, DockerError) as exc:
+    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError) as exc:
         raise _docker_errors(exc) from exc
 
 
@@ -105,5 +109,5 @@ async def update_config(
         raise HTTPException(422, {"errors": exc.errors}) from exc
     try:
         return to_read(config, await manager.write_config(server, config, values))
-    except (ServerBusy, RuntimeUnavailable, DockerError) as exc:
+    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError) as exc:
         raise _docker_errors(exc) from exc

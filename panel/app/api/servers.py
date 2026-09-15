@@ -234,6 +234,8 @@ async def send_command(server_id: str, body: CommandBody, session: Session, mana
         raise HTTPException(409, "the server is not running")
     try:
         await manager.send_command(server, body.command)
+    except ServerBusy as exc:
+        raise HTTPException(409, str(exc)) from exc
     except (RuntimeUnavailable, DockerError) as exc:
         raise HTTPException(503, f"docker: {exc}") from exc
 

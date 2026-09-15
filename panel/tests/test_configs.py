@@ -180,3 +180,73 @@ def test_config_update(client, runtime):
 def test_config_unknown_id(client):
     server = minecraft_server(client)
     assert client.get(f"/api/servers/{server['id']}/configs/nope").status_code == 404
+
+
+FACTORIO = b"""{
+  "name": "Name of the game",
+  "_comment_name": "This is a comment",
+  "max_players": 0,
+  "visibility": { "public": true, "lan": true },
+  "tags": ["game", "tags"],
+  "autosave_interval": 10,
+  "afk_autokick_interval": 0.5
+}
+"""
+
+
+def test_json_values_keep_their_types():
+    doc = ConfigDocument("json", FACTORIO)
+    items = doc.items()
+    assert items["visibility.public"] == "true" and items["max_players"] == "0"
+    assert "_comment_name" not in items and "tags" not in items  # comments and lists aren't editable
+
+    doc.set("visibility.public", "false")
+    doc.set("max_players", "12")
+    doc.set("name", "Привіт")
+    doc.set("afk_autokick_interval", "2.5")
+    data = __import__("json").loads(doc.render())
+    assert data["visibility"] == {"public": False, "lan": True}
+    assert data["max_players"] == 12 and data["name"] == "Привіт" and data["afk_autokick_interval"] == 2.5
+    assert data["tags"] == ["game", "tags"] and data["_comment_name"] == "This is a comment"
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "error"),
+    [("max_players", "lots", "must be an integer"), ("visibility.lan", "yes", "must be true or false"),
+     ("nope", "1", "not a setting in this file")],
+)  # fmt: skip
+def test_json_type_errors(key, value, error):
+    doc = ConfigDocument("json", FACTORIO)
+    with pytest.raises(ConfigValuesError) as exc:
+        doc.set(key, value)
+    assert exc.value.errors == {key: error}
+
+
+def test_broken_json_is_reported():
+    with pytest.raises(ValueError, match="valid JSON"):
+        ConfigDocument("json", b"{not json")
+
+
+def test_config_path_inside_mounts(client, runtime):
+    server = create_installed(client, "valheim", password="secret123")
+    manager = client.app.state.manager
+    template = manager._templates["valheim"]
+    from app.games.schema import ConfigFile as CF
+
+    config = CF.model_validate({"id": "x", "label": "x", "path": "config/adminlist.txt", "format": "cvars"})
+    db_server = type("S", (), {"template_id": "valheim", "id": server["id"]})()
+    assert manager._config_path(db_server, config) == "/config/adminlist.txt"
+    assert template.runtime.mounts
+
+
+def test_factorio_settings_through_the_api(client, runtime):
+    server = create_installed(client, "factorio")
+    runtime.config_files[(server["id"], "/factorio/config/server-settings.json")] = FACTORIO
+    url = f"/api/servers/{server['id']}/configs/server_settings"
+
+    keys = [e["key"] for e in client.get(url).json()["entries"]]
+    assert keys[:2] == ["name", "max_players"]  # hinted ones in template order
+
+    resp = client.put(url, json={"values": {"visibility.public": "false", "max_players": "lots"}})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["errors"] == {"max_players": "must be an integer"}

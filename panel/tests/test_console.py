@@ -73,3 +73,17 @@ async def test_follow_console_continues_after_restart(monkeypatch):
     # History only the first time, then only lines newer than the previous stream.
     assert runtime.calls[0] == (console_module.HISTORY_LINES, 0)
     assert runtime.calls[1][0] is None and runtime.calls[1][1] > 0
+
+
+def test_games_without_console_refuse_commands(client, runtime):
+    server = create_installed(client, "valheim", password="secret123")
+    client.post(f"/api/servers/{server['id']}/start")
+    resp = client.post(f"/api/servers/{server['id']}/command", json={"command": "save"})
+    assert resp.status_code == 409 and "no console" in resp.json()["detail"]
+    assert client.get("/api/templates/valheim").json()["console"]["commands"] is False
+
+    resp = client.post(
+        f"/api/servers/{server['id']}/schedules",
+        json={"name": "x", "cron": "0 4 * * *", "action": "command", "command": "save"},
+    )
+    assert resp.status_code == 422 and "action" in resp.json()["detail"]["errors"]

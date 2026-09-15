@@ -41,6 +41,10 @@ class LocalFiles:
             raise FileError(f"'{p.name}' already exists", 409)
         p.mkdir()
 
+    async def ensure_dirs(self, server_id, paths):
+        for path in paths:
+            self._path(server_id, path).mkdir(parents=True, exist_ok=True)
+
     async def rename(self, server_id, path, new_name):
         p = self._path(server_id, path)
         target = p.with_name(validate_name(new_name))

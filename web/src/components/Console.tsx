@@ -128,7 +128,11 @@ export function Console({ serverId, running, consoleSpec }: Props) {
         <div className="p-3">
           <div ref={containerRef} className="h-80" />
         </div>
-        <CommandInput disabled={!connected || !running} running={running} onSend={send} />
+        {consoleSpec?.commands === false ? (
+          <p className="border-t border-line-soft px-3 py-2.5 text-sm text-muted">this game has no console commands</p>
+        ) : (
+          <CommandInput disabled={!connected || !running} running={running} onSend={send} />
+        )}
       </div>
     </div>
   )

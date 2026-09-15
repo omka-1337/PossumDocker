@@ -23,6 +23,12 @@ class PortBinding:
 
 
 @dataclass(frozen=True)
+class VolumeMount:
+    subpath: str
+    path: str
+
+
+@dataclass(frozen=True)
 class ContainerSpec:
     image: str
     entrypoint: list[str] | None = None
@@ -30,6 +36,8 @@ class ContainerSpec:
     env: dict[str, str] = field(default_factory=dict)
     ports: list[PortBinding] = field(default_factory=list)
     data_path: str = "/data"
+    # Parts of the volume at several paths; empty: the whole volume at data_path.
+    mounts: list[VolumeMount] = field(default_factory=list)
     # Host file mounted read-only at /dgs/install.sh
     script: Path | None = None
 
@@ -67,9 +75,14 @@ def _render(text: str, context: dict, strict: bool = False) -> str:
 
 
 def _render_env(env: dict[str, str], context: dict) -> dict[str, str]:
-    rendered = {key: _render(value, context) for key, value in env.items()}
-    # A value from a hidden field (loader_version for Paper) renders empty: leave it unset.
-    return {key: value for key, value in rendered.items() if value != ""}
+    result = {}
+    for key, value in env.items():
+        rendered = _render(value, context)
+        # A hidden field (loader_version for Paper) renders empty: leave it unset. A literal ""
+        # in the template is meant as empty, e.g. to switch off an image's own cron job.
+        if rendered != "" or "{" not in value:
+            result[key] = rendered
+    return result
 
 
 def _render_list(items: list[str] | None, context: dict) -> list[str] | None:
@@ -89,8 +102,9 @@ def build_spec(template: Template, server: Server, templates_dir: Path) -> Serve
     }
     runtime = template.runtime
     ports = [
-        PortBinding(host=server.ports[p.name], container=p.container, protocol=p.protocol)
+        PortBinding(host=host, container=p.container or host, protocol=p.protocol)
         for p in template.ports
+        if (host := server.ports[p.name])
     ]
     runtime_env = _render_env(runtime.env, context)
 
@@ -101,6 +115,7 @@ def build_spec(template: Template, server: Server, templates_dir: Path) -> Serve
         env=runtime_env,
         ports=ports,
         data_path=runtime.data_path,
+        mounts=[VolumeMount(subpath=m.subpath, path=m.path) for m in runtime.mounts],
     )
 
     install_spec = None

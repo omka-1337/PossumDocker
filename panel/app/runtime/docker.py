@@ -150,6 +150,9 @@ class DockerRuntime:
         """(Re)create the runtime container. Data lives in the volume, so this is safe."""
         name = container_name(server_id)
         await self._remove_container(name)
+        if spec.mounts:
+            # Docker refuses to mount a volume subpath that doesn't exist yet.
+            await self.files.ensure_dirs(server_id, [m.subpath for m in spec.mounts])
 
         port_key = lambda p: f"{p.container}/{p.protocol}"  # noqa: E731
         await self._docker.containers.create(
@@ -161,7 +164,7 @@ class DockerRuntime:
                 "Tty": False,
                 "ExposedPorts": {port_key(p): {} for p in spec.ports},
                 "HostConfig": {
-                    "Binds": [f"{volume_name(server_id)}:{spec.data_path}"],
+                    **self._volume_config(server_id, spec),
                     "PortBindings": {port_key(p): [{"HostPort": str(p.host)}] for p in spec.ports},
                     "RestartPolicy": {"Name": "no"},
                     # A tiny init as PID 1 forwards SIGTERM to the game; a game running as PID 1
@@ -171,6 +174,21 @@ class DockerRuntime:
             },
             name=name,
         )
+
+    def _volume_config(self, server_id: str, spec: ContainerSpec) -> dict:
+        if not spec.mounts:
+            return {"Binds": [f"{volume_name(server_id)}:{spec.data_path}"]}
+        return {
+            "Mounts": [
+                {
+                    "Type": "volume",
+                    "Source": volume_name(server_id),
+                    "Target": mount.path,
+                    "VolumeOptions": {"Subpath": mount.subpath},
+                }
+                for mount in spec.mounts
+            ]
+        }
 
     def _base_config(self, spec: ContainerSpec, server_id: str, role: str) -> dict:
         config: dict = {

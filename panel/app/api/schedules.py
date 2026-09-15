@@ -7,6 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import Session
 from app.api.servers import get_server_or_404
+from app.games.schema import Template
 from app.models import Schedule, ScheduleAction
 from app.runtime.scheduler import Scheduler, describe, next_run, validate_cron
 
@@ -61,7 +62,7 @@ def to_read(schedule: Schedule, scheduler: Scheduler) -> ScheduleRead:
     )
 
 
-def apply(schedule: Schedule, body: ScheduleWrite, scheduler: Scheduler) -> None:
+def apply(schedule: Schedule, body: ScheduleWrite, scheduler: Scheduler, template: Template | None) -> None:
     errors = {}
     try:
         cron = validate_cron(body.cron, scheduler.tz)
@@ -69,6 +70,8 @@ def apply(schedule: Schedule, body: ScheduleWrite, scheduler: Scheduler) -> None
         errors["cron"] = str(exc)
     if body.action == ScheduleAction.COMMAND and not body.command:
         errors["command"] = "a command schedule needs a command"
+    if body.action == ScheduleAction.COMMAND and template and not template.console.commands:
+        errors["action"] = "this game has no console commands"
     if errors:
         # Keyed by field, like server creation, so the form shows each message under its input.
         raise HTTPException(422, {"errors": errors})
@@ -97,9 +100,9 @@ async def list_schedules(server_id: str, session: Session, request: Request) -> 
 async def create_schedule(
     server_id: str, body: ScheduleWrite, session: Session, request: Request
 ) -> ScheduleRead:
-    await get_server_or_404(session, server_id)
+    server = await get_server_or_404(session, server_id)
     schedule = Schedule(server_id=server_id)
-    apply(schedule, body, get_scheduler(request))
+    apply(schedule, body, get_scheduler(request), request.app.state.templates.get(server.template_id))
     session.add(schedule)
     await session.commit()
     return to_read(schedule, get_scheduler(request))
@@ -110,7 +113,8 @@ async def update_schedule(
     server_id: str, schedule_id: str, body: ScheduleWrite, session: Session, request: Request
 ) -> ScheduleRead:
     schedule = await get_schedule_or_404(session, server_id, schedule_id)
-    apply(schedule, body, get_scheduler(request))
+    server = await get_server_or_404(session, server_id)
+    apply(schedule, body, get_scheduler(request), request.app.state.templates.get(server.template_id))
     await session.commit()
     return to_read(schedule, get_scheduler(request))
 

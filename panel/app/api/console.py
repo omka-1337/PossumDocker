@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.models import Server
 from app.runtime.console import follow_console
-from app.runtime.manager import ServerManager, ServerStatus
+from app.runtime.manager import ServerBusy, ServerManager, ServerStatus
 
 log = logging.getLogger(__name__)
 
@@ -71,5 +71,7 @@ async def _run_command(websocket: WebSocket, manager: ServerManager, server: Ser
         return
     try:
         await manager.send_command(server, command)
+    except ServerBusy as exc:
+        await websocket.send_json({"type": "error", "data": str(exc)})
     except DockerError as exc:
         await websocket.send_json({"type": "error", "data": f"docker: {exc}"})

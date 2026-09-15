@@ -165,6 +165,10 @@ class DockerFiles:
 
     # --- changes -------------------------------------------------------------
 
+    async def ensure_dirs(self, server_id: str, paths: list[str]) -> None:
+        if targets := [_abs(p) for p in paths if resolve(p)]:
+            await self._exec(server_id, "mkdir", "-p", *targets)
+
     async def mkdir(self, server_id: str, path: str) -> None:
         rel = resolve(path)
         if not rel:

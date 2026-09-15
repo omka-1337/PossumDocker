@@ -1,0 +1,86 @@
+id: valheim
+name: Valheim
+description: Dedicated server; about 1 GB of game files is downloaded while installing.
+color: "#2e3b48"
+# Icon and cover art come from Steam at runtime.
+steam_appid: 892970
+
+fields:
+  - id: world_name
+    label: World name
+    type: string
+    default: Dedicated
+    pattern: '^[\w -]{1,40}$'
+    help: Another name starts a new world; the old one stays in config/worlds_local.
+    editable: true
+    on_change: restart
+
+  - id: password
+    label: Server password
+    type: string
+    required: true
+    min_length: 5
+    max_length: 64
+    help: At least 5 characters, and it must not contain the server's name, or Valheim won't start.
+    editable: true
+    on_change: restart
+
+  - id: public
+    label: List in the server browser
+    type: boolean
+    default: false
+    editable: true
+    on_change: restart
+
+  - id: crossplay
+    label: Crossplay (Xbox and Game Pass players)
+    type: boolean
+    default: false
+    editable: true
+    on_change: restart
+
+ports:
+  # Valheim listens on the port players use, and answers server-list queries on the next one.
+  - { name: game, protocol: udp, default_host: 2456 }
+  - { name: query, protocol: udp, default_host: 2457, follows: game }
+
+# Download the server now, so "create" leaves a server that starts quickly.
+install:
+  image: steamcmd/steamcmd:latest
+  script: install/valheim.sh
+
+runtime:
+  image: lloesche/valheim-server:latest
+  env:
+    SERVER_NAME: "{{ server.name }}"
+    SERVER_PORT: "{{ ports.game }}"
+    WORLD_NAME: "{{ world_name }}"
+    SERVER_PASS: "{{ password }}"
+    SERVER_PUBLIC: "{{ public | lower }}"
+    CROSSPLAY: "{{ crossplay | lower }}"
+    # The panel makes backups and runs schedules itself; switch off the image's own cron jobs.
+    BACKUPS: "false"
+    RESTART_CRON: ""
+    UPDATE_CRON: ""
+  stop:
+    # No console: the image saves the world on SIGTERM, which can take a while for big worlds.
+    timeout: 120
+  # Worlds and settings in /config, the ~1 GB server in /opt/valheim: both in the server's volume.
+  mounts:
+    - { subpath: config, path: /config }
+    - { subpath: server, path: /opt/valheim }
+
+backup:
+  paths:
+    - config/worlds_local
+    - config/adminlist.txt
+    - config/bannedlist.txt
+    - config/permittedlist.txt
+
+console:
+  # Valheim has no server console that reads commands.
+  commands: false
+  highlight:
+    - { pattern: '\b(ERROR|Error|Exception)\b', color: red }
+    - { pattern: '\b(WARN|WARNING|Warning)\b', color: yellow }
+    - { pattern: '\bDEBUG\b', color: gray }

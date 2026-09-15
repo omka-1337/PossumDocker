@@ -282,12 +282,22 @@ class ServerManager:
             self._stopping.discard(server.id)
 
     async def send_command(self, server: Server, line: str) -> None:
+        if not self._templates[server.template_id].console.commands:
+            raise ServerBusy("this game has no console commands")
         await self.runtime.send_command(server.id, line)
 
     # --- config files --------------------------------------------------------
 
     def _config_path(self, server: Server, config: ConfigFile) -> str:
-        return posixpath.join(self._templates[server.template_id].runtime.data_path, config.path)
+        """Where the game container sees the config file."""
+        runtime = self._templates[server.template_id].runtime
+        if not runtime.mounts:
+            return posixpath.join(runtime.data_path, config.path)
+        # With mounts, config paths are relative to the volume: find the mount that holds it.
+        for mount in runtime.mounts:
+            if config.path == mount.subpath or config.path.startswith(mount.subpath + "/"):
+                return posixpath.join(mount.path, config.path[len(mount.subpath) :].lstrip("/"))
+        raise ValueError(f"config file {config.path} isn't inside any of the game's mounts")
 
     async def read_config(self, server: Server, config: ConfigFile) -> ConfigDocument | None:
         """None until the game has written the file (usually on its first start)."""

@@ -58,7 +58,8 @@ export type TemplateField = StringField | NumberField | BooleanField | SelectFie
 
 export interface Port {
   name: string
-  container: number
+  // null: the same as the host port
+  container: number | null
   protocol: 'tcp' | 'udp'
   default_host: number
 }
@@ -84,6 +85,8 @@ export interface ConsoleSpec {
   highlight: { pattern: string; color: HighlightColor }[]
   // Lines continuing the previous record (stack traces) keep its colour
   continuation: string | null
+  // false: the game reads no commands (Valheim), so there's no command input
+  commands: boolean
 }
 
 export interface TemplateDetail extends TemplateSummary {

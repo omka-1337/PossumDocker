@@ -167,3 +167,63 @@ def test_invalid_highlight_pattern_is_rejected():
             {"id": "t", "name": "T", "runtime": {"image": "a"},
              "console": {"highlight": [{"pattern": "([", "color": "red"}]}}
         )  # fmt: skip
+
+
+def test_port_groups_move_together():
+    ports = [
+        Port(name="game", protocol="udp", default_host=2456),
+        Port(name="query", protocol="udp", default_host=2457, follows="game"),
+    ]
+    assert allocate_ports(ports, taken=set(), is_free=lambda p, proto: True) == {"game": 2456, "query": 2457}
+    # 2457 is busy: the pair moves, it doesn't split into 2456 + 2458.
+    busy = {2457}
+    assert allocate_ports(ports, taken=set(), is_free=lambda p, proto: p not in busy) == {
+        "game": 2458,
+        "query": 2459,
+    }
+    assert allocate_ports(ports, taken={(2456, "udp")}, is_free=lambda p, proto: True) == {
+        "game": 2457,
+        "query": 2458,
+    }
+
+
+def test_follows_must_point_back():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="not declared before it"):
+        Template.model_validate(
+            {"id": "t", "name": "T", "runtime": {"image": "a"},
+             "ports": [{"name": "a", "protocol": "udp", "default_host": 1, "follows": "b"},
+                       {"name": "b", "protocol": "udp", "default_host": 2}]}
+        )  # fmt: skip
+
+
+def test_valheim_spec():
+    server = Server(
+        id="s1",
+        name="Viking Hall",
+        template_id="valheim",
+        values={"world_name": "Midgard", "password": "secret123", "public": False, "crossplay": True},
+        ports={"game": 2466, "query": 2467},
+    )
+    spec = build_spec(load_template("valheim"), server, TEMPLATES_DIR).runtime
+    # No container port in the template: inside == outside, so the server list shows the right one.
+    assert [(p.host, p.container) for p in spec.ports] == [(2466, 2466), (2467, 2467)]
+    assert spec.env["SERVER_PORT"] == "2466" and spec.env["SERVER_NAME"] == "Viking Hall"
+    assert spec.env["SERVER_PUBLIC"] == "false" and spec.env["CROSSPLAY"] == "true"
+    # Literal "" switches the image's cron jobs off instead of being dropped.
+    assert spec.env["UPDATE_CRON"] == "" and spec.env["RESTART_CRON"] == ""
+    assert [(m.subpath, m.path) for m in spec.mounts] == [("config", "/config"), ("server", "/opt/valheim")]
+
+
+def test_factorio_spec():
+    server = Server(
+        id="s1",
+        name="x",
+        template_id="factorio",
+        values={"version": "stable", "space_age": False},
+        ports={"game": 34197},
+    )
+    spec = build_spec(load_template("factorio"), server, TEMPLATES_DIR).runtime
+    assert spec.image == "factoriotools/factorio:stable"
+    assert spec.env["DLC_SPACE_AGE"] == "false" and spec.env["PORT"] == "34197"

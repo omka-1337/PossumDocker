@@ -1,5 +1,6 @@
 """Read and edit game config files without losing comments, order or unknown keys."""
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -15,22 +16,36 @@ class _Line:
 
 
 class ConfigDocument:
-    """A parsed config file. Only lines whose value changed are re-rendered."""
+    """A parsed config file. Only what changed is rewritten: comments, order and unknown keys stay."""
 
-    def __init__(self, fmt: Literal["properties", "cvars"], data: bytes):
+    def __init__(self, fmt: Literal["properties", "cvars", "json"], data: bytes):
         self.format = fmt
         # Older Java wrote properties as Latin-1; keep whatever the file uses.
         try:
             text, self._encoding = data.decode("utf-8"), "utf-8"
         except UnicodeDecodeError:
             text, self._encoding = data.decode("latin-1"), "latin-1"
-        self._lines = [self._parse_line(raw) for raw in text.splitlines()]
+        if fmt == "json":
+            try:
+                self._json = json.loads(text) if text.strip() else {}
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"the file isn't valid JSON: {exc}") from exc
+            if not isinstance(self._json, dict):
+                raise ValueError("the file isn't a JSON object")
+            self._lines = []
+        else:
+            self._lines = [self._parse_line(raw) for raw in text.splitlines()]
 
     def items(self) -> dict[str, str]:
+        if self.format == "json":
+            return {key: _json_to_text(value) for key, (_, _, value) in _json_leaves(self._json).items()}
         # For a key set twice the game uses the last one, so do we.
         return {line.key: line.value for line in self._lines if line.key is not None}
 
     def set(self, key: str, value: str) -> None:
+        if self.format == "json":
+            self._set_json(key, value)
+            return
         matches = [line for line in self._lines if line.key == key]
         if not matches:
             self._lines.append(_Line(raw=self._render_line(key, value), key=key, value=value))
@@ -41,11 +56,37 @@ class ConfigDocument:
                 line.raw = self._render_line(key, value)
 
     def render(self) -> bytes:
-        text = "\n".join(line.raw for line in self._lines) + "\n"
+        if self.format == "json":
+            text = json.dumps(self._json, indent=2, ensure_ascii=False)
+        else:
+            text = "\n".join(line.raw for line in self._lines)
+        text += "\n"
         try:
             return text.encode(self._encoding)
         except UnicodeEncodeError:
             return text.encode("utf-8")
+
+    def _set_json(self, key: str, value: str) -> None:
+        leaves = _json_leaves(self._json)
+        if key not in leaves:
+            raise ConfigValuesError({key: "not a setting in this file"})
+        parent, name, current = leaves[key]
+        # Keep the JSON type the game expects: "true" stays a boolean, "10" a number.
+        if isinstance(current, bool):
+            if value not in ("true", "false"):
+                raise ConfigValuesError({key: "must be true or false"})
+            parent[name] = value == "true"
+        elif isinstance(current, int):
+            if not re.fullmatch(r"-?\d+", value):
+                raise ConfigValuesError({key: "must be an integer"})
+            parent[name] = int(value)
+        elif isinstance(current, float):
+            try:
+                parent[name] = float(value)
+            except ValueError as exc:
+                raise ConfigValuesError({key: "must be a number"}) from exc
+        else:
+            parent[name] = value
 
     # --- formats -------------------------------------------------------------
 
@@ -58,6 +99,36 @@ class ConfigDocument:
         if self.format == "properties":
             return f"{_escape_properties(key, is_key=True)}={_escape_properties(value)}"
         return f'{key} "{value}"'
+
+
+# JSON (Factorio) ---------------------------------------------------------------
+
+
+def _json_leaves(data: dict) -> dict[str, tuple[dict, str, object]]:
+    """Editable values: strings, numbers, booleans at the top level and one level down ("visibility.public").
+
+    Lists, deeper objects and `_comment` keys (Factorio documents its settings with them)
+    are left as they are.
+    """
+    leaves: dict[str, tuple[dict, str, object]] = {}
+    for key, value in data.items():
+        if key.startswith("_comment"):
+            continue
+        if isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                if not sub_key.startswith("_comment") and _is_scalar(sub_value):
+                    leaves[f"{key}.{sub_key}"] = (value, sub_key, sub_value)
+        elif _is_scalar(value):
+            leaves[key] = (data, key, value)
+    return leaves
+
+
+def _is_scalar(value: object) -> bool:
+    return isinstance(value, str | int | float | bool)
+
+
+def _json_to_text(value: object) -> str:
+    return ("true" if value else "false") if isinstance(value, bool) else str(value)
 
 
 # Java .properties (Minecraft) -------------------------------------------------

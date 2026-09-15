@@ -96,9 +96,13 @@ TemplateField = Annotated[
 
 class Port(StrictModel):
     name: Identifier
-    container: int = Field(ge=1, le=65535)
+    # Port inside the container. Leave it out to use the host port inside too: games that tell a
+    # server list their own port (Valheim, Factorio) must listen on the port players connect to.
+    container: int | None = Field(default=None, ge=1, le=65535)
     protocol: Literal["tcp", "udp"]
     default_host: int = Field(ge=1, le=65535)
+    # Keep this port at the same distance from another one (Valheim wants game port + 1 for queries).
+    follows: Identifier | None = None
 
 
 class StopSpec(StrictModel):
@@ -110,14 +114,25 @@ class StopSpec(StrictModel):
 # Every string below is a Jinja template rendered with the field values, e.g. "{{ version }}".
 
 
+class Mount(StrictModel):
+    # Folder inside the server's volume (created if missing) ...
+    subpath: Annotated[str, Field(pattern=r"^[\w.-]+(/[\w.-]+)*$", max_length=255)]
+    # ... and where the game sees it.
+    path: Annotated[str, Field(pattern=r"^/[\w./-]*$", max_length=255)]
+
+
 class RuntimeSpec(StrictModel):
     image: str
     entrypoint: list[str] | None = None
     command: list[str] | None = None
+    # A value that renders empty from a {{ field }} is left unset; a literal "" is passed as empty.
     env: dict[str, str] = {}
     stop: StopSpec = StopSpec()
-    # Where the server's data volume is mounted.
+    # Where the server's data volume is mounted (and the install step always mounts it there).
     data_path: str = "/data"
+    # Instead of one mount at data_path: parts of the volume at several places (Valheim: /config and
+    # /opt/valheim). Paths in config_files and backup are then relative to the volume, not data_path.
+    mounts: list[Mount] = []
 
 
 class InstallSpec(StrictModel):
@@ -160,6 +175,8 @@ class ConsoleSpec(StrictModel):
     highlight: list[HighlightRule] = []
     # Lines that continue the previous record (a Java stack trace under an ERROR) and keep its colour.
     continuation: str | None = None
+    # False for games that read nothing from stdin (Valheim): the panel hides the command input.
+    commands: bool = True
 
     @field_validator("continuation")
     @classmethod
@@ -200,7 +217,8 @@ class ConfigFile(StrictModel):
     label: str
     # Relative to runtime.data_path.
     path: Annotated[str, Field(pattern=r"^[\w./-]+$")]
-    format: Literal["properties", "cvars"]
+    # json: top-level values and one level of nesting ("visibility.public") are editable.
+    format: Literal["properties", "cvars", "json"]
     # Set by the panel itself (ports, RCON password): shown, but not editable.
     managed: list[str] = []
     hints: dict[str, ConfigHint] = {}
@@ -292,6 +310,9 @@ class Template(StrictModel):
         port_names = [p.name for p in self.ports]
         if len(port_names) != len(set(port_names)):
             raise ValueError("duplicate port name")
+        for port in self.ports:
+            if port.follows and port.follows not in port_names[: port_names.index(port.name)]:
+                raise ValueError(f"port '{port.name}' follows '{port.follows}', not declared before it")
         config_ids = [c.id for c in self.config_files]
         if len(config_ids) != len(set(config_ids)):
             raise ValueError("duplicate config file id")

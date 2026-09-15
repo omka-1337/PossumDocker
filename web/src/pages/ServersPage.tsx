@@ -1,9 +1,10 @@
-import { IconChevronRight, IconDeviceGamepad2, IconPlus } from '@tabler/icons-react'
+import { IconChevronRight, IconPlus } from '@tabler/icons-react'
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useServers, useTemplates } from '../api/queries'
 import type { Server } from '../api/types'
 import { CreateServerDialog } from '../components/CreateServerDialog'
+import { GameIcon } from '../components/GameIcon'
 import { Button, StatusBadge } from '../components/ui'
 
 export function ServersPage() {
@@ -67,7 +68,8 @@ function Centered({ children }: { children: ReactNode }) {
 
 function ServerRow({ server }: { server: Server }) {
   const { data: templates } = useTemplates()
-  const game = templates?.find((t) => t.id === server.template_id)?.name ?? server.template_id
+  const template = templates?.find((t) => t.id === server.template_id)
+  const game = template?.name ?? server.template_id
 
   return (
     <li>
@@ -75,9 +77,7 @@ function ServerRow({ server }: { server: Server }) {
         to={`/servers/${server.id}`}
         className="group flex items-center gap-3 rounded-2xl bg-panel p-3 transition hover:bg-raised"
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-page">
-          <IconDeviceGamepad2 size={22} stroke={1.5} />
-        </span>
+        <GameIcon template={template} />
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{server.name}</div>
           <div className="truncate text-xs text-muted lowercase">{game}</div>

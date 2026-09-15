@@ -1,6 +1,8 @@
 id: minecraft-java
 name: "Minecraft: Java Edition"
 description: Vanilla, Paper (plugins) or Fabric (mods).
+icon: icons/minecraft-java.svg
+color: "#2d4a1e"
 
 fields:
   - id: loader

@@ -14,6 +14,15 @@ class TemplateLoadError(Exception):
     pass
 
 
+def icon_path(directory: Path, template: Template) -> Path | None:
+    """The template's icon file, only if it exists and lies inside the templates directory."""
+    if not template.icon:
+        return None
+    root = directory.resolve()
+    path = (root / template.icon).resolve()
+    return path if path.is_relative_to(root) and path.is_file() else None
+
+
 def load_templates(directory: Path, providers: OptionsProviders) -> dict[str, Template]:
     """Load and validate every templates/*.yaml. Any broken template stops the panel from starting."""
     templates: dict[str, Template] = {}
@@ -30,6 +39,8 @@ def load_templates(directory: Path, providers: OptionsProviders) -> dict[str, Te
                 raise TemplateLoadError(
                     f"{path.name}: field '{field.id}' uses unknown provider '{field.options_from}'"
                 )
+        if template.icon and icon_path(directory, template) is None:
+            raise TemplateLoadError(f"{path.name}: icon '{template.icon}' not found in {directory}")
         templates[template.id] = template
 
     log.info("Loaded %d game template(s) from %s", len(templates), directory)

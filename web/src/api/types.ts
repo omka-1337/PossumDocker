@@ -67,7 +67,10 @@ export interface TemplateSummary {
   id: string
   name: string
   description: string | null
-  icon: string | null
+  // null: no icon, the UI shows a generic one
+  icon_url: string | null
+  // Icon tile background, e.g. "#c9862e"
+  color: string | null
 }
 
 export interface TemplateDetail extends TemplateSummary {

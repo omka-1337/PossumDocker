@@ -1,4 +1,5 @@
-import { IconChevronRight, IconDeviceGamepad2 } from '@tabler/icons-react'
+import { IconChevronRight } from '@tabler/icons-react'
+import { GameIcon } from './GameIcon'
 import { useState } from 'react'
 import { useTemplates } from '../api/queries'
 import type { Server } from '../api/types'
@@ -36,9 +37,7 @@ export function CreateServerDialog({ onClose, onCreated }: Props) {
                 onClick={() => setTemplateId(t.id)}
                 className="group flex w-full items-center gap-3 rounded-xl bg-raised p-3 text-left transition hover:bg-raised-hover active:scale-[0.99]"
               >
-                <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-page">
-                  <IconDeviceGamepad2 size={22} stroke={1.5} />
-                </span>
+                <GameIcon template={t} />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-medium lowercase">{t.name}</span>
                   {t.description && <span className="block truncate text-xs text-muted">{t.description}</span>}

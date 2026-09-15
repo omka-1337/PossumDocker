@@ -20,6 +20,7 @@ import {
 import type { Server } from '../api/types'
 import { ConfigEditor } from '../components/ConfigEditor'
 import { FileBrowser } from '../components/files/FileBrowser'
+import { GameIcon } from '../components/GameIcon'
 import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
 
@@ -46,7 +47,8 @@ export function ServerPage() {
 
 function ServerView({ server }: { server: Server }) {
   const { data: templates } = useTemplates()
-  const game = templates?.find((t) => t.id === server.template_id)?.name ?? server.template_id
+  const template = templates?.find((t) => t.id === server.template_id)
+  const game = template?.name ?? server.template_id
   const installing = server.status === 'installing' || server.status === 'install_failed'
 
   return (
@@ -56,6 +58,7 @@ function ServerView({ server }: { server: Server }) {
       </Link>
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
+        <GameIcon template={template} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-xl font-semibold">{server.name}</h1>
           <p className="text-sm text-muted lowercase">{game}</p>

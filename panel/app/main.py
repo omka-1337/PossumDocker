@@ -32,6 +32,7 @@ def create_app(
             app.state.providers = providers or default_providers(client, settings.options_cache_ttl)
             app.state.templates = load_templates(settings.templates_dir, app.state.providers)
             app.state.sessionmaker = sessionmaker
+            app.state.templates_dir = settings.templates_dir
             app.state.manager = ServerManager(
                 docker, sessionmaker, app.state.templates, settings.templates_dir
             )

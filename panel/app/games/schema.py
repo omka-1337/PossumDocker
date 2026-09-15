@@ -185,7 +185,10 @@ class Template(StrictModel):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
     name: str
     description: str | None = None
-    icon: str | None = None
+    # SVG/PNG/WebP relative to the templates directory, e.g. icons/cs16.svg (see icons/README.md).
+    icon: Annotated[str | None, Field(pattern=r"^[\w./-]+\.(svg|png|webp)$")] = None
+    # Background of the icon tile, e.g. "#de9b35".
+    color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
     fields: list[TemplateField] = []
     ports: list[Port] = []
     install: InstallSpec | None = None

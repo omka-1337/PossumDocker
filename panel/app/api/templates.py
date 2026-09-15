@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.api.deps import Providers, Templates, require_template
 from app.games.providers import ProviderError
-from app.games.schema import Option, Port, SecretField, SelectField, TemplateField
+from app.games.registry import icon_path
+from app.games.schema import Option, Port, SecretField, SelectField, Template, TemplateField
 from app.games.validation import dependency_params
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -13,7 +15,9 @@ class TemplateSummary(BaseModel):
     id: str
     name: str
     description: str | None
-    icon: str | None
+    # None when the template has no icon: the UI shows a generic one.
+    icon_url: str | None
+    color: str | None
 
 
 class TemplateDetail(TemplateSummary):
@@ -23,22 +27,41 @@ class TemplateDetail(TemplateSummary):
     ports: list[Port]
 
 
+def summary(template: Template) -> dict:
+    return {
+        "id": template.id,
+        "name": template.name,
+        "description": template.description,
+        "icon_url": f"/api/templates/{template.id}/icon" if template.icon else None,
+        "color": template.color,
+    }
+
+
 @router.get("")
 async def list_templates(templates: Templates) -> list[TemplateSummary]:
-    return [TemplateSummary.model_validate(t, from_attributes=True) for t in templates.values()]
+    return [TemplateSummary(**summary(t)) for t in templates.values()]
 
 
 @router.get("/{template_id}")
 async def get_template(template_id: str, templates: Templates) -> TemplateDetail:
     template = require_template(templates, template_id)
     fields = [f for f in template.fields if not (isinstance(f, SecretField) and f.hidden)]
-    return TemplateDetail(
-        id=template.id,
-        name=template.name,
-        description=template.description,
-        icon=template.icon,
-        fields=fields,
-        ports=template.ports,
+    return TemplateDetail(**summary(template), fields=fields, ports=template.ports)
+
+
+@router.get("/{template_id}/icon")
+async def get_template_icon(template_id: str, request: Request, templates: Templates) -> FileResponse:
+    path = icon_path(request.app.state.templates_dir, require_template(templates, template_id))
+    if path is None:
+        raise HTTPException(404, "this game has no icon")
+    return FileResponse(
+        path,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            # An SVG opened directly is a document that could run scripts: allow none.
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

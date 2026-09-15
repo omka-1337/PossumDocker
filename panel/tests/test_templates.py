@@ -68,3 +68,31 @@ def test_select_needs_exactly_one_options_source():
 def test_unknown_template_key_is_rejected():
     with pytest.raises(ValidationError):
         Template.model_validate({"id": "x", "name": "X", "runtime": MINIMAL_RUNTIME, "fieldz": []})
+
+
+def test_icons_are_served_safely(client):
+    summary = {t["id"]: t for t in client.get("/api/templates").json()}["cs16"]
+    assert summary["icon_url"] == "/api/templates/cs16/icon"
+    assert summary["color"] == "#c9862e"
+
+    resp = client.get(summary["icon_url"])
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert "default-src 'none'" in resp.headers["content-security-policy"]
+
+
+def test_icon_must_exist_inside_templates_dir(tmp_path):
+    from app.games.providers import OptionsProviders
+    from app.games.registry import TemplateLoadError, load_templates
+
+    (tmp_path / "game.yaml").write_text(
+        "id: game\nname: Game\nicon: icons/missing.svg\nruntime: {image: alpine}\n"
+    )
+    with pytest.raises(TemplateLoadError, match="not found"):
+        load_templates(tmp_path, OptionsProviders(None))
+
+    (tmp_path / "game.yaml").write_text(
+        "id: game\nname: Game\nicon: ../../etc/passwd.svg\nruntime: {image: alpine}\n"
+    )
+    with pytest.raises(TemplateLoadError, match="not found"):
+        load_templates(tmp_path, OptionsProviders(None))

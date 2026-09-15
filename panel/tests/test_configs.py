@@ -148,7 +148,7 @@ def test_config_before_first_start(client):
 
 def test_config_shows_only_keys_in_the_file(client, runtime):
     server = minecraft_server(client)
-    runtime.files[(server["id"], MC_PATH)] = PROPERTIES + b"custom-mod-key=1\n"
+    runtime.config_files[(server["id"], MC_PATH)] = PROPERTIES + b"custom-mod-key=1\n"
 
     entries = client.get(f"/api/servers/{server['id']}/configs/server_properties").json()["entries"]
     keys = [e["key"] for e in entries]
@@ -161,12 +161,12 @@ def test_config_shows_only_keys_in_the_file(client, runtime):
 
 def test_config_update(client, runtime):
     server = minecraft_server(client)
-    runtime.files[(server["id"], MC_PATH)] = PROPERTIES
+    runtime.config_files[(server["id"], MC_PATH)] = PROPERTIES
     url = f"/api/servers/{server['id']}/configs/server_properties"
 
     resp = client.put(url, json={"values": {"difficulty": "hard", "motd": "Hi: all"}})
     assert resp.status_code == 200, resp.text
-    written = runtime.files[(server["id"], MC_PATH)].decode()
+    written = runtime.config_files[(server["id"], MC_PATH)].decode()
     assert "difficulty=hard\n" in written and "motd=Hi\\: all\n" in written
 
     resp = client.put(url, json={"values": {"server-port": "1", "difficulty": "insane"}})

@@ -62,7 +62,10 @@ def _health_from_status(status_text: str) -> str | None:
 
 class DockerRuntime:
     def __init__(self, docker: aiodocker.Docker | None = None):
+        from app.runtime.docker_files import DockerFiles  # it imports the naming helpers from here
+
         self._docker = docker or aiodocker.Docker()
+        self.files = DockerFiles(self._docker)
 
     async def close(self) -> None:
         await self._docker.close()
@@ -260,6 +263,7 @@ class DockerRuntime:
     async def remove(self, server_id: str) -> None:
         """Remove the containers and the data volume. Irreversible."""
         name = container_name(server_id)
+        await self.files.close(server_id)  # it keeps the volume in use
         await self._remove_container(f"{name}-install")
         await self._remove_container(name)
         try:

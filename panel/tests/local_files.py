@@ -1,0 +1,117 @@
+"""A Files implementation on a local directory, standing in for the Docker helper in tests."""
+
+import io
+import posixpath
+import shutil
+import tarfile
+import zipfile
+from pathlib import Path
+
+from app.runtime.files import MAX_TEXT_BYTES, FileEntry, FileError, Upload, resolve, validate_name
+
+
+class LocalFiles:
+    def __init__(self, root: Path):
+        self.root = root
+
+    def _path(self, server_id: str, rel: str) -> Path:
+        base = self.root / server_id
+        base.mkdir(parents=True, exist_ok=True)
+        return base / resolve(rel)
+
+    def _entry(self, path: Path) -> FileEntry:
+        kind = "symlink" if path.is_symlink() else "dir" if path.is_dir() else "file"
+        stat = path.lstat()
+        return FileEntry(name=path.name, type=kind, size=stat.st_size, mtime=int(stat.st_mtime))
+
+    async def stat(self, server_id, path):
+        p = self._path(server_id, path)
+        return self._entry(p) if p.exists() or p.is_symlink() else None
+
+    async def list(self, server_id, path):
+        p = self._path(server_id, path)
+        if not p.is_dir():
+            raise FileError("not found", 404)
+        return [self._entry(child) for child in p.iterdir()]
+
+    async def mkdir(self, server_id, path):
+        p = self._path(server_id, path)
+        if p.exists():
+            raise FileError(f"'{p.name}' already exists", 409)
+        p.mkdir()
+
+    async def rename(self, server_id, path, new_name):
+        p = self._path(server_id, path)
+        target = p.with_name(validate_name(new_name))
+        if target.exists():
+            raise FileError(f"'{new_name}' already exists", 409)
+        p.rename(target)
+
+    def _transfer(self, server_id, sources, destination, op):
+        dest = resolve(destination)
+        for source in sources:
+            rel = resolve(source)
+            if not rel:
+                raise FileError("can't move the root folder")
+            if dest == rel or dest.startswith(rel + "/"):
+                raise FileError(f"can't put '{rel}' inside itself")
+            target = self._path(server_id, dest) / posixpath.basename(rel)
+            if target.exists():
+                raise FileError(f"'{target.name}' already exists in the destination", 409)
+            op(self._path(server_id, rel), target)
+
+    async def move(self, server_id, sources, destination):
+        self._transfer(server_id, sources, destination, shutil.move)
+
+    async def copy(self, server_id, sources, destination):
+        def copy(src: Path, dst: Path):
+            shutil.copytree(src, dst) if src.is_dir() else shutil.copy2(src, dst)
+
+        self._transfer(server_id, sources, destination, copy)
+
+    async def delete(self, server_id, paths):
+        for path in paths:
+            if not resolve(path):
+                raise FileError("can't delete the root folder")
+            p = self._path(server_id, path)
+            shutil.rmtree(p) if p.is_dir() else p.unlink()
+
+    async def read_text(self, server_id, path):
+        data = self._path(server_id, path).read_bytes()
+        if len(data) > MAX_TEXT_BYTES:
+            raise FileError("too big", 413)
+        if b"\0" in data:
+            raise FileError("this doesn't look like a text file", 415)
+        return data.decode()
+
+    async def write_text(self, server_id, path, content):
+        self._path(server_id, path).write_text(content)
+
+    async def upload(self, server_id, directory, uploads: list[Upload]):
+        for upload in uploads:
+            rel = resolve(upload.path)
+            if not rel or any(validate_name(p) != p for p in rel.split("/")):
+                raise FileError(f"invalid upload path '{upload.path}'")
+            target = self._path(server_id, posixpath.join(resolve(directory), rel))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(upload.file.read())
+
+    async def extract(self, server_id, path):
+        rel = resolve(path)
+        target = rel[:-4]
+        with zipfile.ZipFile(self._path(server_id, rel)) as archive:
+            archive.extractall(self._path(server_id, target))
+        return target
+
+    async def download(self, server_id, path):
+        yield self._path(server_id, path).read_bytes()
+
+    async def download_archive(self, server_id, directory, names):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            for name in names:
+                tar.add(self._path(server_id, posixpath.join(directory, name)), arcname=name)
+        yield buffer.getvalue()
+
+    async def close(self, server_id):
+        pass

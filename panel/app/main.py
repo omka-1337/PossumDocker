@@ -36,6 +36,7 @@ def create_app(
                 docker, sessionmaker, app.state.templates, settings.templates_dir
             )
             await app.state.manager.recover()
+            app.state.manager.start_background_jobs()
             yield
             await app.state.manager.shutdown()
 

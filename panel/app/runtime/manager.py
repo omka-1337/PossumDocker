@@ -16,6 +16,7 @@ from app.games.configs import ConfigDocument
 from app.games.schema import ConfigFile, Template
 from app.models import Server, ServerState
 from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
+from app.runtime.files import Files
 from app.runtime.spec import ContainerSpec, build_spec
 
 log = logging.getLogger(__name__)
@@ -39,6 +40,8 @@ class Runtime(Protocol):
     async def write_file(self, server_id: str, path: str, data: bytes) -> None: ...
     def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]: ...
     async def remove(self, server_id: str) -> None: ...
+
+    files: Files
 
 
 class ServerStatus(enum.StrEnum):
@@ -73,6 +76,7 @@ class ServerManager:
         self._tasks: dict[str, asyncio.Task] = {}
         self._stopping: set[str] = set()
         self._install_logs: dict[str, deque[str]] = {}
+        self._reaper: asyncio.Task | None = None
 
     # --- startup / shutdown --------------------------------------------------
 
@@ -86,9 +90,25 @@ class ServerManager:
             await session.commit()
 
     async def shutdown(self) -> None:
-        for task in self._tasks.values():
+        tasks = [*self._tasks.values(), *([self._reaper] if self._reaper else [])]
+        for task in tasks:
             task.cancel()
-        await asyncio.gather(*self._tasks.values(), return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    def start_background_jobs(self) -> None:
+        reap = getattr(self.runtime.files, "reap_idle", None)
+        if reap is None:
+            return
+
+        async def reaper():
+            while True:
+                await asyncio.sleep(60)
+                try:
+                    await reap()
+                except Exception:
+                    log.exception("reaping idle file helpers failed")
+
+        self._reaper = asyncio.create_task(reaper())
 
     # --- status --------------------------------------------------------------
 

@@ -11,6 +11,7 @@ from app.games.schema import Option
 from app.main import create_app
 from app.runtime.docker import ContainerState, LogFn
 from app.runtime.spec import ContainerSpec
+from tests.local_files import LocalFiles
 
 
 async def fake_versions(_client: httpx.AsyncClient, params: dict[str, Any]) -> list[Option]:
@@ -26,13 +27,14 @@ async def fake_loader_versions(_client: httpx.AsyncClient, params: dict[str, Any
 class FakeRuntime:
     """In-memory stand-in for Docker."""
 
-    def __init__(self):
+    def __init__(self, files_root=None):
+        self.files = LocalFiles(files_root) if files_root else None
         self.containers: dict[str, ContainerState] = {}
         self.specs: dict[str, ContainerSpec] = {}
         self.installed: list[str] = []
         self.commands: list[tuple[str, str]] = []
         self.log_lines: dict[str, list[str]] = {}
-        self.files: dict[tuple[str, str], bytes] = {}
+        self.config_files: dict[tuple[str, str], bytes] = {}
         self.fail_install = False
 
     async def states(self):
@@ -68,10 +70,10 @@ class FakeRuntime:
         self.log_lines.setdefault(server_id, []).append(f"> {line}\n")
 
     async def read_file(self, server_id, path):
-        return self.files.get((server_id, path))
+        return self.config_files.get((server_id, path))
 
     async def write_file(self, server_id, path, data):
-        self.files[(server_id, path)] = data
+        self.config_files[(server_id, path)] = data
 
     async def logs(self, server_id, tail=200, since=0):
         if since:  # like Docker: nothing newer than the previous stream
@@ -93,8 +95,8 @@ def providers() -> OptionsProviders:
 
 
 @pytest.fixture
-def runtime() -> FakeRuntime:
-    return FakeRuntime()
+def runtime(tmp_path) -> FakeRuntime:
+    return FakeRuntime(files_root=tmp_path / "volumes")
 
 
 @pytest.fixture

@@ -19,6 +19,7 @@ import {
 } from '../api/queries'
 import type { Server } from '../api/types'
 import { ConfigEditor } from '../components/ConfigEditor'
+import { FileBrowser } from '../components/files/FileBrowser'
 import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
 
@@ -49,7 +50,7 @@ function ServerView({ server }: { server: Server }) {
   const installing = server.status === 'installing' || server.status === 'install_failed'
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-5">
+    <div className="mx-auto w-full max-w-5xl px-4 py-5">
       <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted hover:text-zinc-200">
         <IconArrowLeft size={16} /> servers
       </Link>
@@ -81,13 +82,17 @@ function ServerView({ server }: { server: Server }) {
 
 function InstalledTabs({ server }: { server: Server }) {
   const { data: configs = [] } = useConfigs(server.id)
-  // "console" or a config file id.
+  // "console", "files" or "config:<id>" (prefixed, so a config can't be called "files").
   const [tab, setTab] = useState('console')
 
   return (
     <>
       <Tabs
-        tabs={[{ value: 'console', label: 'console' }, ...configs.map((c) => ({ value: c.id, label: c.label }))]}
+        tabs={[
+          { value: 'console', label: 'console' },
+          { value: 'files', label: 'files' },
+          ...configs.map((c) => ({ value: `config:${c.id}`, label: c.label })),
+        ]}
         value={tab}
         onChange={setTab}
       />
@@ -95,8 +100,10 @@ function InstalledTabs({ server }: { server: Server }) {
         <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
           <Console serverId={server.id} running={server.status === 'running' || server.status === 'starting'} />
         </Suspense>
+      ) : tab === 'files' ? (
+        <FileBrowser serverId={server.id} />
       ) : (
-        <ConfigEditor key={tab} server={server} configId={tab} />
+        <ConfigEditor key={tab} server={server} configId={tab.slice('config:'.length)} />
       )}
     </>
   )

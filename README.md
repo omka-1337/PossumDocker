@@ -19,6 +19,7 @@ Self-hosted panel for creating and running game servers — from Minecraft to Co
 
 Requires Python 3.12+ and access to Docker (the user must be able to run `docker ps`).
 Game servers get containers named `dgs-<id>` and volumes named `dgs-<id>-data`.
+The file browser starts a small `busybox` helper (`dgs-<id>-files`, no network) that is removed when idle.
 
 ```bash
 cd panel

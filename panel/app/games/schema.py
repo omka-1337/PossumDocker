@@ -213,6 +213,16 @@ class ConfigFile(StrictModel):
         return path
 
 
+HttpsUrl = Annotated[str, Field(pattern=r"^https://[^\s]+$", max_length=2000)]
+
+
+class RemoteArt(StrictModel):
+    # Square icon: SVG, PNG, JPEG or WebP.
+    icon: HttpsUrl | None = None
+    # Wide cover for the game picker; cropped to about 2:1.
+    cover: HttpsUrl | None = None
+
+
 class Template(StrictModel):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
     name: str
@@ -223,6 +233,8 @@ class Template(StrictModel):
     color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
     # For games on Steam: icon and cover art are fetched from Steam at runtime (`icon` stays the fallback).
     steam_appid: Annotated[int | None, Field(gt=0)] = None
+    # Art from any public https link, fetched and cached by the panel; wins over Steam's.
+    art: RemoteArt = RemoteArt()
     fields: list[TemplateField] = []
     ports: list[Port] = []
     install: InstallSpec | None = None

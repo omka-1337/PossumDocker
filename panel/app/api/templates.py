@@ -5,10 +5,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.api.deps import Providers, Templates, require_template
+from app.games.art import MEDIA_TYPES, ArtCache
 from app.games.providers import ProviderError
 from app.games.registry import icon_path
 from app.games.schema import ConsoleSpec, Option, Port, SecretField, SelectField, Template, TemplateField
-from app.games.steam import SteamAssets
 from app.games.validation import dependency_params
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -18,11 +18,11 @@ class TemplateSummary(BaseModel):
     id: str
     name: str
     description: str | None
-    # Square icon from Steam; may fail to load, then the UI falls back to icon_url.
-    steam_icon_url: str | None
+    # Icon from the web (template `art.icon` or Steam); may fail to load, then the UI uses icon_url.
+    remote_icon_url: str | None
     # Icon bundled with the template. None: the UI shows a generic one.
     icon_url: str | None
-    # Wide cover art (Steam header, 460×215).
+    # Wide cover art from the web (template `art.cover` or the Steam header).
     cover_url: str | None
     color: str | None
 
@@ -42,9 +42,9 @@ def summary(template: Template) -> dict:
         "id": template.id,
         "name": template.name,
         "description": template.description,
-        "steam_icon_url": f"{base}/steam/icon" if steam else None,
+        "remote_icon_url": f"{base}/art/icon" if template.art.icon or steam else None,
         "icon_url": f"{base}/icon" if template.icon else None,
-        "cover_url": f"{base}/steam/header" if steam else None,
+        "cover_url": f"{base}/art/cover" if template.art.cover or steam else None,
         "color": template.color,
     }
 
@@ -61,34 +61,37 @@ async def get_template(template_id: str, templates: Templates) -> TemplateDetail
     return TemplateDetail(**summary(template), fields=fields, ports=template.ports, console=template.console)
 
 
+# An SVG opened directly is a document that could run scripts: allow none, whatever its source.
+IMAGE_HEADERS = {
+    "Cache-Control": "public, max-age=86400",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
+
+
 @router.get("/{template_id}/icon")
 async def get_template_icon(template_id: str, request: Request, templates: Templates) -> FileResponse:
     path = icon_path(request.app.state.templates_dir, require_template(templates, template_id))
     if path is None:
         raise HTTPException(404, "this game has no icon")
-    return FileResponse(
-        path,
-        headers={
-            "Cache-Control": "public, max-age=86400",
-            # An SVG opened directly is a document that could run scripts: allow none.
-            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-            "X-Content-Type-Options": "nosniff",
-        },
-    )
+    return FileResponse(path, headers=IMAGE_HEADERS)
 
 
-@router.get("/{template_id}/steam/{kind}")
-async def get_steam_asset(
-    template_id: str, kind: Literal["icon", "header"], request: Request, templates: Templates
+@router.get("/{template_id}/art/{kind}")
+async def get_remote_art(
+    template_id: str, kind: Literal["icon", "cover"], request: Request, templates: Templates
 ) -> FileResponse:
+    """The template's own link first, then Steam: the first source that has the image wins."""
     template = require_template(templates, template_id)
-    if template.steam_appid is None:
-        raise HTTPException(404, "this game is not on Steam")
-    steam: SteamAssets = request.app.state.steam
-    path = await steam.get(template.steam_appid, kind)
+    art: ArtCache = request.app.state.art
+    path = None
+    if url := getattr(template.art, kind):
+        path = await art.from_url(url)
+    if path is None and template.steam_appid is not None:
+        path = await art.from_steam(template.steam_appid, kind)
     if path is None:
-        raise HTTPException(404, "Steam has no such image for this game right now")
-    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+        raise HTTPException(404, f"no {kind} for this game right now")
+    return FileResponse(path, media_type=MEDIA_TYPES[path.suffix[1:]], headers=IMAGE_HEADERS)
 
 
 @router.get("/{template_id}/fields/{field_id}/options")

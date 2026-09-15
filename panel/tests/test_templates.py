@@ -74,8 +74,8 @@ def test_icons_are_served_safely(client):
     summary = {t["id"]: t for t in client.get("/api/templates").json()}["cs16"]
     assert summary["icon_url"] == "/api/templates/cs16/icon"
     assert summary["color"] == "#c9862e"
-    assert summary["steam_icon_url"] == "/api/templates/cs16/steam/icon"
-    assert summary["cover_url"] == "/api/templates/cs16/steam/header"
+    assert summary["remote_icon_url"] == "/api/templates/cs16/art/icon"
+    assert summary["cover_url"] == "/api/templates/cs16/art/cover"
 
     resp = client.get(summary["icon_url"])
     assert resp.status_code == 200
@@ -100,24 +100,46 @@ def test_icon_must_exist_inside_templates_dir(tmp_path):
         load_templates(tmp_path, OptionsProviders(None))
 
 
-def test_steam_art_endpoints(client, tmp_path):
-    image = tmp_path / "header.jpg"
-    image.write_bytes(b"\xff\xd8jpeg")
+def test_remote_art_endpoints(client, tmp_path):
+    jpeg, svg = tmp_path / "a.jpg", tmp_path / "b.svg"
+    jpeg.write_bytes(b"\xff\xd8jpeg")
+    svg.write_bytes(b"<svg/>")
 
-    class FakeAssets:
-        async def get(self, appid, kind):
+    class FakeArt:
+        def __init__(self):
+            self.url_calls = []
+
+        async def from_url(self, url):
+            self.url_calls.append(url)
+            return svg if url.endswith(".svg") else None  # the cover link is "down"
+
+        async def from_steam(self, appid, kind):
             assert appid == 10
-            return image if kind == "header" else None
+            return jpeg if kind == "cover" else None
 
-    client.app.state.steam = FakeAssets()
-    resp = client.get("/api/templates/cs16/steam/header")
+    client.app.state.art = fake = FakeArt()
+
+    # Steam game: cover from Steam, no icon available anywhere.
+    resp = client.get("/api/templates/cs16/art/cover")
     assert resp.status_code == 200 and resp.headers["content-type"] == "image/jpeg"
-    assert client.get("/api/templates/cs16/steam/icon").status_code == 404  # Steam had none
-    assert client.get("/api/templates/cs16/steam/logo").status_code == 422
-    # Not a Steam game: no URLs, and the endpoint says so.
+    assert client.get("/api/templates/cs16/art/icon").status_code == 404
+    assert client.get("/api/templates/cs16/art/logo").status_code == 422
+
+    # Template links: the SVG icon comes back as SVG, locked down.
     minecraft = client.get("/api/templates/minecraft-java").json()
-    assert minecraft["steam_icon_url"] is None and minecraft["cover_url"] is None
-    assert client.get("/api/templates/minecraft-java/steam/header").status_code == 404
+    resp = client.get(minecraft["remote_icon_url"])
+    assert resp.headers["content-type"].startswith("image/svg+xml")
+    assert "default-src 'none'" in resp.headers["content-security-policy"]
+    # Its cover link fails and it's not on Steam: 404, so the UI shows the colour tile.
+    assert client.get(minecraft["cover_url"]).status_code == 404
+    assert len(fake.url_calls) == 2
+
+
+def test_art_links_must_be_https():
+    with pytest.raises(ValidationError):
+        Template.model_validate(
+            {"id": "x", "name": "X", "runtime": MINIMAL_RUNTIME, "art": {"icon": "http://example.com/a.png"}}
+        )
 
 
 def test_console_rules_reach_the_ui(client):

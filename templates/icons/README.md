@@ -2,16 +2,26 @@
 
 Shown next to each game in the panel.
 
-## Games on Steam
+## Art from the web
 
-Set `steam_appid` in the template (e.g. `steam_appid: 10` for Counter-Strike). The panel downloads the game's
-icon and header art from Steam's CDN on first use and caches them in `data/cache/steam/`. That art belongs to its
-publishers and is **not** stored in this repository. Browsers only talk to the panel, never to Steam.
+Nothing below is stored in this repository. The panel downloads it on first use, caches it in
+`data/cache/art/` and serves the cached copy; browsers never contact these sites. The images belong to their owners.
+
+- `art.icon` / `art.cover`: any public `https://` link (SVG, PNG, JPEG, WebP, up to 2 MB). Used first.
+- `steam_appid`: for games on Steam, the icon and header art come from Steam's CDN. Used when `art` has no link
+  for that image or the link fails.
+
+```yaml
+art:
+  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/minecraft.svg
+  cover: https://cdn2.steamgriddb.com/hero_thumb/043ab21fc5a1607b381ac3896176dac6.jpg
+steam_appid: 10
+```
 
 ## Bundled icons
 
 A template can also point to a file here: `icon: icons/<file>.svg` and `color: "#rrggbb"` for its tile.
-It is used for games that aren't on Steam, and as the fallback when Steam art can't be fetched.
+It is the fallback when art from the web can't be fetched (offline on first start, a dead link).
 
 | File | Source | License |
 |---|---|---|

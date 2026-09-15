@@ -8,23 +8,23 @@ const sizes = {
 }
 
 /**
- * The game's icon: Steam's (fills the tile), else the template's own on its colour tile,
+ * The game's icon: from the web (fills the tile), else the template's own on its colour tile,
  * else a gamepad. Each step is tried when the previous one fails to load.
  */
 export function GameIcon({ template, size = 'sm' }: { template?: TemplateSummary; size?: keyof typeof sizes }) {
   const [failed, setFailed] = useState<string[]>([])
   const s = sizes[size]
-  const steam = template?.steam_icon_url
+  const remote = template?.remote_icon_url
   const local = template?.icon_url
   const fail = (url: string) => setFailed((f) => [...f, url])
 
-  if (steam && !failed.includes(steam)) {
+  if (remote && !failed.includes(remote)) {
     return (
       <img
-        src={steam}
+        src={remote}
         alt=""
         draggable={false}
-        onError={() => fail(steam)}
+        onError={() => fail(remote)}
         className={`${s.tile} shrink-0 bg-panel object-cover`}
       />
     )

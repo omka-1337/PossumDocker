@@ -85,5 +85,16 @@ config_files:
       mp_autoteambalance: { label: Auto team balance, type: boolean, true_value: "1", false_value: "0" }
       sv_alltalk: { label: All talk, type: boolean, true_value: "1", false_value: "0" }
 
+backup:
+  # The game itself (~900 MB) can always be installed again; keep what admins change.
+  paths:
+    - cstrike/addons
+    - cstrike/maps
+    - cstrike/server.cfg
+    - cstrike/mapcycle.txt
+    - cstrike/motd.txt
+    - cstrike/banned.cfg
+    - cstrike/listip.cfg
+
 query:
   protocol: goldsrc

@@ -128,3 +128,24 @@ def test_extract_zip(client, server):
     upload(client, server, "", {"pack.zip": buffer.getvalue()})
     assert client.post(url(server, "/extract"), json={"path": "pack.zip"}).json() == {"path": "pack"}
     assert listing(client, server, "pack/config") == {"a.yml": "file"}
+
+
+def test_docker_files_matches_the_protocol():
+    """The tests run against LocalFiles; make sure the real implementation takes the same arguments."""
+    import inspect
+
+    from app.runtime.docker_files import DockerFiles
+    from app.runtime.files import Files
+    from tests.local_files import LocalFiles
+
+    def params(function) -> list[str]:
+        # Names only: evaluating the annotations would trip over the class's own `list` method.
+        return list(inspect.signature(function, annotation_format=inspect.Format.STRING).parameters)
+
+    methods = [name for name, value in vars(Files).items() if callable(value) and not name.startswith("_")]
+    assert methods
+    for name in methods:
+        expected = params(getattr(Files, name))
+        for implementation in (DockerFiles, LocalFiles):
+            actual = params(getattr(implementation, name))
+            assert actual == expected, f"{implementation.__name__}.{name}{actual} != Files.{name}{expected}"

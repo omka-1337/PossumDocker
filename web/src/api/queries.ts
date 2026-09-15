@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import {
   TRANSITIONAL,
+  type BackupList,
   type ConfigRead,
   type ConfigSummary,
   type FieldValues,
@@ -24,6 +25,7 @@ const keys = {
   installLog: (id: string) => ['servers', id, 'install-log'] as const,
   configs: (id: string) => ['servers', id, 'configs'] as const,
   config: (id: string, configId: string) => ['servers', id, 'configs', configId] as const,
+  backups: (id: string) => ['servers', id, 'backups'] as const,
 }
 
 const POLL_MS = 1500
@@ -151,6 +153,39 @@ export function useUpdateConfig(serverId: string, configId: string) {
       }),
     onSuccess: (config) => queryClient.setQueryData(keys.config(serverId, configId), config),
   })
+}
+
+export function useBackups(serverId: string, serverBusy: boolean) {
+  return useQuery({
+    queryKey: keys.backups(serverId),
+    queryFn: () => api<BackupList>(`/servers/${serverId}/backups`),
+    // Poll while a backup is being made or restored, to show when it's done.
+    refetchInterval: (query) =>
+      serverBusy || query.state.data?.backups.some((b) => b.status === 'creating') ? POLL_MS : false,
+  })
+}
+
+export function useBackupActions(serverId: string) {
+  const queryClient = useQueryClient()
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: keys.backups(serverId) })
+    queryClient.invalidateQueries({ queryKey: keys.server(serverId) })
+  }
+  const base = `/servers/${serverId}/backups`
+  return {
+    create: useMutation({
+      mutationFn: (note: string) => api(base, { method: 'POST', body: JSON.stringify({ note }) }),
+      onSettled: refresh,
+    }),
+    restore: useMutation({
+      mutationFn: (backupId: string) => api(`${base}/${backupId}/restore`, { method: 'POST' }),
+      onSettled: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (backupId: string) => api(`${base}/${backupId}`, { method: 'DELETE' }),
+      onSettled: refresh,
+    }),
+  }
 }
 
 export function useDeleteServer() {

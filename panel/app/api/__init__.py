@@ -1,12 +1,13 @@
 from fastapi import APIRouter
 
-from app.api import configs, console, files, servers, templates
+from app.api import backups, configs, console, files, servers, templates
 
 router = APIRouter(prefix="/api")
 router.include_router(templates.router)
 router.include_router(servers.router)
 router.include_router(configs.router)
 router.include_router(files.router)
+router.include_router(backups.router)
 router.include_router(console.router)
 
 

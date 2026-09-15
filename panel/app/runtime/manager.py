@@ -4,6 +4,7 @@ import asyncio
 import enum
 import logging
 import posixpath
+import shutil
 from collections import deque
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -14,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.games.configs import ConfigDocument
 from app.games.schema import ConfigFile, Template
-from app.models import Server, ServerState
+from app.models import Backup, BackupStatus, Server, ServerState
 from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
 from app.runtime.files import Files
 from app.runtime.spec import ContainerSpec, build_spec
@@ -54,6 +55,7 @@ class ServerStatus(enum.StrEnum):
     STARTING = "starting"
     RUNNING = "running"
     STOPPING = "stopping"
+    RESTORING = "restoring"  # a backup is being put back
     UNKNOWN = "unknown"  # Docker is unreachable
 
 
@@ -68,25 +70,35 @@ class ServerManager:
         sessionmaker: async_sessionmaker[AsyncSession],
         templates: dict[str, Template],
         templates_dir: Path,
+        backups_dir: Path,
     ):
         self.runtime = runtime
+        self.backups_dir = backups_dir
         self._sessionmaker = sessionmaker
         self._templates = templates
         self._templates_dir = templates_dir
         self._tasks: dict[str, asyncio.Task] = {}
         self._stopping: set[str] = set()
+        self._restoring: set[str] = set()
+        # Last restore failure per server, shown on the backups tab until the next restore.
+        self.restore_errors: dict[str, str] = {}
         self._install_logs: dict[str, deque[str]] = {}
         self._reaper: asyncio.Task | None = None
 
     # --- startup / shutdown --------------------------------------------------
 
     async def recover(self) -> None:
-        """An install can't survive a panel restart: mark interrupted ones as failed."""
+        """Installs and backups can't survive a panel restart: mark interrupted ones as failed."""
         async with self._sessionmaker() as session:
             result = await session.scalars(select(Server).where(Server.state == ServerState.INSTALLING))
             for server in result:
                 server.state = ServerState.INSTALL_FAILED
                 server.state_message = "the panel was restarted during installation, reinstall the server"
+            backups = await session.scalars(select(Backup).where(Backup.status == BackupStatus.CREATING))
+            for backup in backups:
+                backup.status = BackupStatus.FAILED
+                backup.message = "the panel was restarted while this backup was being made"
+                self.backup_file(backup).unlink(missing_ok=True)
             await session.commit()
 
     async def shutdown(self) -> None:
@@ -117,6 +129,8 @@ class ServerManager:
     ) -> ServerStatus:
         if server.state != ServerState.INSTALLED:
             return ServerStatus(server.state.value)
+        if server.id in self._restoring:
+            return ServerStatus.RESTORING
         if server.id in self._stopping:
             return ServerStatus.STOPPING
         if not docker_ok:
@@ -299,3 +313,123 @@ class ServerManager:
             await asyncio.gather(task, return_exceptions=True)
         await self.runtime.remove(server.id)
         self._install_logs.pop(server.id, None)
+        # Backup rows go with the server (ON DELETE CASCADE); their files have to go too.
+        await asyncio.to_thread(shutil.rmtree, self.backups_dir / server.id, True)
+
+    # --- backups -------------------------------------------------------------
+
+    def backup_file(self, backup: Backup) -> Path:
+        return self.backups_dir / backup.server_id / f"{backup.id}.tar.gz"
+
+    async def create_backup(
+        self,
+        server: Server,
+        note: str | None = None,
+        schedule_id: str | None = None,
+        keep: int | None = None,
+    ) -> Backup:
+        """Record the backup and archive the server in the background.
+
+        `keep`: afterwards, delete this schedule's backups beyond the newest N.
+        """
+        self._require_installed(server)
+        async with self._sessionmaker() as session:
+            backup = Backup(server_id=server.id, note=note, schedule_id=schedule_id)
+            session.add(backup)
+            await session.commit()
+        self._spawn(server.id, self._backup(server, backup, keep))
+        return backup
+
+    async def _backup(self, server: Server, backup: Backup, keep: int | None) -> None:
+        spec = self._templates[server.template_id].backup
+        target = self.backup_file(backup)
+        running = await self.status_of(server) in (ServerStatus.RUNNING, ServerStatus.STARTING)
+        try:
+            await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
+            if running:
+                for command in spec.before:
+                    await self.runtime.send_command(server.id, command)
+                if spec.before:
+                    await asyncio.sleep(spec.wait)
+            try:
+                size, paths = await self.runtime.files.archive_to(
+                    server.id, target, spec.paths or None, spec.exclude
+                )
+            finally:
+                if running:
+                    for command in spec.after:
+                        await self.runtime.send_command(server.id, command)
+            await self._finish_backup(
+                backup.id, BackupStatus.READY, None, size=size, paths=paths, exclude=list(spec.exclude)
+            )
+            if keep:
+                await self._prune_backups(server.id, backup.schedule_id, keep)
+        except asyncio.CancelledError:
+            await asyncio.to_thread(target.unlink, True)
+            raise
+        except Exception as exc:
+            log.exception("backup of %s failed", server.id)
+            await asyncio.to_thread(target.unlink, True)
+            await self._finish_backup(backup.id, BackupStatus.FAILED, str(exc)[:1000])
+
+    async def _finish_backup(
+        self, backup_id: str, status: BackupStatus, message: str | None, **fields
+    ) -> None:
+        async with self._sessionmaker() as session:
+            backup = await session.get(Backup, backup_id)
+            if backup is None:
+                return
+            backup.status, backup.message = status, message
+            for key, value in fields.items():
+                setattr(backup, key, value)
+            await session.commit()
+
+    async def _prune_backups(self, server_id: str, schedule_id: str | None, keep: int) -> None:
+        async with self._sessionmaker() as session:
+            old = (
+                await session.scalars(
+                    select(Backup)
+                    .where(
+                        Backup.server_id == server_id,
+                        Backup.schedule_id == schedule_id,
+                        Backup.status == BackupStatus.READY,
+                    )
+                    .order_by(Backup.created_at.desc())
+                    .offset(keep)
+                )
+            ).all()
+            for backup in old:
+                await asyncio.to_thread(self.backup_file(backup).unlink, True)
+                await session.delete(backup)
+            await session.commit()
+
+    async def restore_backup(self, server: Server, backup: Backup) -> None:
+        self._require_installed(server)
+        if backup.status != BackupStatus.READY:
+            raise ServerBusy("this backup isn't complete")
+        if await self.status_of(server) != ServerStatus.STOPPED:
+            raise ServerBusy("stop the server before restoring a backup")
+        self._restoring.add(server.id)
+        try:
+            self._spawn(server.id, self._restore(server, backup))
+        except ServerBusy:
+            self._restoring.discard(server.id)
+            raise
+
+    async def _restore(self, server: Server, backup: Backup) -> None:
+        try:
+            await self.runtime.files.restore_from(
+                server.id, self.backup_file(backup), backup.paths, backup.exclude or []
+            )
+        except Exception as exc:
+            log.exception("restore of %s from %s failed", server.id, backup.id)
+            self.restore_errors[server.id] = str(exc)[:1000]
+        else:
+            self.restore_errors.pop(server.id, None)
+        finally:
+            self._restoring.discard(server.id)
+
+    async def delete_backup(self, backup: Backup) -> None:
+        if backup.status == BackupStatus.CREATING:
+            raise ServerBusy("this backup is still being made")
+        await asyncio.to_thread(self.backup_file(backup).unlink, True)

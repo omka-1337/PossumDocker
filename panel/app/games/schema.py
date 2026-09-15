@@ -213,6 +213,33 @@ class ConfigFile(StrictModel):
         return path
 
 
+RelativePath = Annotated[str, Field(pattern=r"^[\w.-][\w./-]*$", max_length=255)]
+
+
+class BackupSpec(StrictModel):
+    """What a backup of this game contains and how to take it safely while the server runs."""
+
+    # Only these paths (files or folders, relative to the data volume). Empty: everything.
+    # Restore replaces exactly these, so game files that aren't backed up stay untouched.
+    paths: list[RelativePath] = []
+    # Top-level names (globs allowed) left out of a full backup: caches and downloads the server can get
+    # back by itself. A restore leaves them in place, so the server still starts without the internet.
+    exclude: list[Annotated[str, Field(pattern=r"^[\w.*?\[\]-]+$", max_length=255)]] = []
+    # Console commands around the archive while the server runs, e.g. pause world saving.
+    before: list[str] = []
+    after: list[str] = []
+    # Seconds to wait after `before`, so the game finishes writing.
+    wait: int = Field(default=5, ge=0, le=120)
+
+    @field_validator("paths", "exclude")
+    @classmethod
+    def _no_parent(cls, items: list[str]) -> list[str]:
+        for item in items:
+            if ".." in item.split("/"):
+                raise ValueError(f"'{item}' must stay inside the data directory")
+        return items
+
+
 HttpsUrl = Annotated[str, Field(pattern=r"^https://[^\s]+$", max_length=2000)]
 
 
@@ -241,6 +268,7 @@ class Template(StrictModel):
     runtime: RuntimeSpec
     config_files: list[ConfigFile] = []
     console: ConsoleSpec = ConsoleSpec()
+    backup: BackupSpec = BackupSpec()
     query: dict[str, Any] | None = None
 
     def config_file(self, config_id: str) -> ConfigFile | None:

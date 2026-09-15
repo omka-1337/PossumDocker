@@ -14,6 +14,7 @@ import tarfile
 import tempfile
 import time
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import aiodocker
 from aiodocker.exceptions import DockerError
@@ -311,6 +312,86 @@ class DockerFiles:
     async def download(self, server_id: str, path: str) -> AsyncIterator[bytes]:
         async for chunk in self._exec_stream(server_id, "cat", _abs(path)):
             yield chunk
+
+    # --- backups -------------------------------------------------------------
+
+    async def archive_to(
+        self, server_id: str, target: Path, paths: list[str] | None, exclude: list[str]
+    ) -> tuple[int, list[str] | None]:
+        """Write a .tar.gz of the volume (or just `paths`) to a file on the panel's disk.
+
+        Returns its size and the paths it really contains (missing ones are skipped).
+        """
+        if paths is None:
+            members, present = ["."], None
+        else:
+            present = [
+                p for p in dict.fromkeys(resolve(p) for p in paths) if p and await self.stat(server_id, p)
+            ]
+            if not present:
+                raise FileError("nothing to back up: none of the game's backup paths exist yet")
+            members = [f"./{p}" for p in present]
+
+        args = ["tar", "-czf", "-", "-C", ROOT]
+        for pattern in exclude:
+            # Anchored at the top: "./cache" leaves out /data/cache but not config/cache.
+            args += ["--exclude", f"./{pattern}"]
+
+        container = await self._helper(server_id)
+        execution = await container.exec([*args, *members])
+        errors, size = bytearray(), 0
+        handle = await asyncio.to_thread(open, target, "wb")
+        try:
+            async with execution.start(detach=False) as stream:
+                while (message := await stream.read_out()) is not None:
+                    if message.stream != 1:
+                        errors.extend(message.data)
+                        continue
+                    await asyncio.to_thread(handle.write, message.data)
+                    size += len(message.data)
+                    self._last_used[server_id] = time.monotonic()  # a long backup isn't "idle"
+        finally:
+            await asyncio.to_thread(handle.close)
+        if (await execution.inspect())["ExitCode"] != 0:
+            detail = errors.decode(errors="replace").strip().splitlines()
+            raise FileError(detail[-1] if detail else "tar failed")
+        return size, present
+
+    async def restore_from(
+        self, server_id: str, source: Path, paths: list[str] | None, exclude: list[str]
+    ) -> None:
+        """Replace the volume's contents (or just `paths`) with a backup made by archive_to.
+
+        Top-level entries the backup excluded (caches, downloaded libraries) are left as they are,
+        so the server still starts without having to download them again.
+        """
+        if paths is None:
+            keep = [arg for pattern in exclude for arg in ("!", "-name", pattern)]
+            await self._exec(
+                server_id,
+                "find",
+                ROOT,
+                "-mindepth",
+                "1",
+                "-maxdepth",
+                "1",
+                *keep,
+                "-exec",
+                "rm",
+                "-rf",
+                "{}",
+                "+",
+            )
+        elif targets := [_abs(p) for p in paths if resolve(p)]:
+            await self._exec(server_id, "rm", "-rf", *targets)
+
+        container = await self._helper(server_id)
+        handle = await asyncio.to_thread(open, source, "rb")
+        try:
+            # Docker unpacks .tar.gz itself and keeps owners from the archive.
+            await container.put_archive(ROOT, handle)
+        finally:
+            await asyncio.to_thread(handle.close)
 
     async def download_archive(
         self, server_id: str, directory: str, names: list[str]

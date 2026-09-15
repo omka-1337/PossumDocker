@@ -100,10 +100,11 @@ export type ServerStatus =
   | 'starting'
   | 'running'
   | 'stopping'
+  | 'restoring' // a backup is being put back
   | 'unknown' // Docker is unreachable
 
 /** Statuses that change on their own, so the UI keeps polling while in them. */
-export const TRANSITIONAL: ServerStatus[] = ['installing', 'starting', 'stopping']
+export const TRANSITIONAL: ServerStatus[] = ['installing', 'starting', 'stopping', 'restoring']
 
 export type FieldValues = Record<string, string | number | boolean>
 
@@ -165,4 +166,26 @@ export interface ConfigRead extends ConfigSummary {
   // False until the game writes the file, usually on its first start.
   exists: boolean
   entries: ConfigEntry[]
+}
+
+// Backups (panel/app/api/backups.py)
+
+export interface Backup {
+  id: string
+  note: string | null
+  status: 'creating' | 'ready' | 'failed'
+  message: string | null
+  size: number
+  // What it holds; null: the whole server
+  paths: string[] | null
+  // Made by this schedule; null: by hand
+  schedule_id: string | null
+  created_at: string
+}
+
+export interface BackupList {
+  backups: Backup[]
+  total_size: number
+  // The last restore of this server failed with this message
+  restore_error: string | null
 }

@@ -18,6 +18,7 @@ import {
   type ServerAction,
 } from '../api/queries'
 import type { Server } from '../api/types'
+import { BackupsTab } from '../components/BackupsTab'
 import { FileBrowser } from '../components/files/FileBrowser'
 import { GameIcon } from '../components/GameIcon'
 import { SettingsTab } from '../components/SettingsTab'
@@ -85,7 +86,7 @@ function ServerView({ server }: { server: Server }) {
 
 function InstalledTabs({ server }: { server: Server }) {
   const { data: template } = useTemplate(server.template_id)
-  const [tab, setTab] = useState<'console' | 'files' | 'settings'>('console')
+  const [tab, setTab] = useState<'console' | 'files' | 'backups' | 'settings'>('console')
 
   return (
     <>
@@ -93,6 +94,7 @@ function InstalledTabs({ server }: { server: Server }) {
         tabs={[
           { value: 'console', label: 'console' },
           { value: 'files', label: 'files' },
+          { value: 'backups', label: 'backups' },
           { value: 'settings', label: 'settings' },
         ]}
         value={tab}
@@ -108,6 +110,8 @@ function InstalledTabs({ server }: { server: Server }) {
         </Suspense>
       ) : tab === 'files' ? (
         <FileBrowser serverId={server.id} />
+      ) : tab === 'backups' ? (
+        <BackupsTab server={server} />
       ) : (
         <SettingsTab server={server} />
       )}
@@ -119,7 +123,8 @@ function Actions({ server }: { server: Server }) {
   const action = useServerAction(server.id)
   const run = (a: ServerAction) => action.mutate(a)
   const { status } = server
-  const busy = action.isPending || status === 'starting' || status === 'stopping' || status === 'installing'
+  const busy =
+    action.isPending || status === 'starting' || status === 'stopping' || status === 'installing' || status === 'restoring'
 
   return (
     <div className="mb-4">

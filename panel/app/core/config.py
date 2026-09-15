@@ -16,5 +16,9 @@ class Settings(BaseSettings):
     templates_dir: Path = REPO_ROOT / "templates"
     # Downloaded, regenerable files (game art from Steam...). Safe to delete.
     cache_dir: Path = REPO_ROOT / "data" / "cache"
+    # Server backups (<server id>/<backup id>.tar.gz). Put it on another disk if you can.
+    backups_dir: Path = REPO_ROOT / "data" / "backups"
+    # Time zone schedules run in, e.g. "Europe/Kyiv". Default: the machine's.
+    timezone: str | None = None
     # How long dynamic select options (game versions etc.) are cached, in seconds.
     options_cache_ttl: int = 3600

@@ -1,6 +1,7 @@
 """A Files implementation on a local directory, standing in for the Docker helper in tests."""
 
 import io
+import os
 import posixpath
 import shutil
 import tarfile
@@ -112,6 +113,30 @@ class LocalFiles:
             for name in names:
                 tar.add(self._path(server_id, posixpath.join(directory, name)), arcname=name)
         yield buffer.getvalue()
+
+    async def archive_to(self, server_id, target, paths, exclude):
+        base = self._path(server_id, "")
+        present = None if paths is None else [p for p in paths if (base / p).exists()]
+        if present == []:
+            raise FileError("nothing to back up: none of the game's backup paths exist yet")
+        with tarfile.open(target, "w:gz") as tar:
+            for member in present if present is not None else sorted(os.listdir(base)):
+                if member not in exclude:
+                    tar.add(base / member, arcname=f"./{member}")
+        return target.stat().st_size, present
+
+    async def restore_from(self, server_id, source, paths, exclude):
+        import fnmatch
+
+        base = self._path(server_id, "")
+        full = [c for c in base.iterdir() if not any(fnmatch.fnmatch(c.name, p) for p in exclude)]
+        for child in [base / p for p in paths] if paths is not None else full:
+            if child.is_dir():
+                shutil.rmtree(child)
+            elif child.exists():
+                child.unlink()
+        with tarfile.open(source, "r:gz") as tar:
+            tar.extractall(base, filter="data")
 
     async def close(self, server_id):
         pass

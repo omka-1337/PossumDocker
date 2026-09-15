@@ -36,7 +36,7 @@ def create_app(
             app.state.templates_dir = settings.templates_dir
             app.state.art = ArtCache(client, settings.cache_dir)
             app.state.manager = ServerManager(
-                docker, sessionmaker, app.state.templates, settings.templates_dir
+                docker, sessionmaker, app.state.templates, settings.templates_dir, settings.backups_dir
             )
             await app.state.manager.recover()
             app.state.manager.start_background_jobs()

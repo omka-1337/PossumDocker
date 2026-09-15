@@ -74,6 +74,9 @@ runtime:
     FABRIC_LOADER_VERSION: "{{ loader_version }}"
     MEMORY: "{{ memory_mb }}M"
     RCON_PASSWORD: "{{ rcon_password }}"
+    # Mojang's CDN often resolves to IPv6 first; Docker networks usually have no IPv6 route,
+    # and Java then fails with "Network is unreachable" instead of falling back to IPv4.
+    JVM_OPTS: "-Djava.net.preferIPv4Stack=true"
   stop:
     command: stop
     timeout: 60
@@ -103,6 +106,14 @@ config_files:
       view-distance: { label: View distance, type: number, min: 2, max: 32 }
       simulation-distance: { label: Simulation distance, type: number, min: 3, max: 32 }
       level-seed: { label: World seed, help: Only used when a new world is generated. }
+
+backup:
+  # Downloaded again by the server on start: no need to keep them in every backup.
+  exclude: [cache, libraries, versions, logs, .cache]
+  # Pause autosave so the world isn't written to while it's archived.
+  before: [save-off, save-all flush]
+  after: [save-on]
+  wait: 5
 
 console:
   # Paper: "[12:00:00 WARN]: ...", vanilla/Fabric: "[12:00:00] [Server thread/WARN]: ..."

@@ -102,7 +102,9 @@ def runtime(tmp_path) -> FakeRuntime:
 @pytest.fixture
 def client(tmp_path, providers, runtime) -> TestClient:
     settings = Settings(
-        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}", cache_dir=tmp_path / "cache"
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        cache_dir=tmp_path / "cache",
+        backups_dir=tmp_path / "backups",
     )
     with TestClient(create_app(settings, providers, runtime)) as test_client:
         yield test_client

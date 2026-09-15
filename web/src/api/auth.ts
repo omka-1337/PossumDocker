@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ApiError, api } from './client'
 
 // Mirrors panel/app/api/auth.py and users.py.
@@ -54,6 +54,16 @@ export function useMe() {
   })
 }
 
+/**
+ * Forget everything cached for the previous session and set who is logged in now.
+ * Not queryClient.clear(): that also drops the `me` query the app is watching, and the new
+ * value would land in a fresh query nobody observes, leaving the login page up until a reload.
+ */
+function resetSession(queryClient: QueryClient, me: Me | null) {
+  queryClient.removeQueries({ predicate: (query) => query.queryHash !== JSON.stringify(meKey) })
+  queryClient.setQueryData(meKey, me)
+}
+
 export function useLogin() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -61,8 +71,7 @@ export function useLogin() {
       api<Me>('/auth/login', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: (me) => {
       // Drop anything cached for a previous user before showing the app.
-      queryClient.clear()
-      queryClient.setQueryData(meKey, me)
+      resetSession(queryClient, me)
     },
   })
 }
@@ -71,10 +80,7 @@ export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: () => api('/auth/logout', { method: 'POST' }),
-    onSettled: () => {
-      queryClient.clear()
-      queryClient.setQueryData(meKey, null)
-    },
+    onSettled: () => resetSession(queryClient, null),
   })
 }
 

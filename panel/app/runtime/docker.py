@@ -24,9 +24,9 @@ from app.runtime.spec import ContainerSpec
 
 log = logging.getLogger(__name__)
 
-LABEL_MANAGED = "dgs.managed"
-LABEL_SERVER = "dgs.server_id"
-LABEL_ROLE = "dgs.role"
+LABEL_MANAGED = "possum.managed"
+LABEL_SERVER = "possum.server_id"
+LABEL_ROLE = "possum.role"
 
 LogFn = Callable[[str], None]
 
@@ -79,11 +79,11 @@ def _tar_with(path: str, data: bytes) -> bytes:
 
 
 def container_name(server_id: str) -> str:
-    return f"dgs-{server_id}"
+    return f"possum-{server_id}"
 
 
 def volume_name(server_id: str) -> str:
-    return f"dgs-{server_id}-data"
+    return f"possum-{server_id}-data"
 
 
 def _labels(server_id: str, role: str) -> dict[str, str]:
@@ -197,7 +197,7 @@ class DockerRuntime:
                 # Copied in rather than bind-mounted: a bind needs a path on the Docker host,
                 # and the panel may itself run in a container where the script lives elsewhere.
                 script = await asyncio.to_thread(spec.script.read_bytes)
-                await container.put_archive("/", _tar_with("dgs/install.sh", script))
+                await container.put_archive("/", _tar_with("possum/install.sh", script))
             await container.start()
             async for line in container.log(stdout=True, stderr=True, follow=True):
                 on_log(line.rstrip("\n"))

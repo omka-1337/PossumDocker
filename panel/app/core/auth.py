@@ -16,13 +16,13 @@ from app.core.permissions import ALL, Permission
 from app.core.security import hash_password
 from app.models import ServerAccess, User, UserSession
 
-COOKIE = "dgs_session"
+COOKIE = "possum_session"
 SESSION_LIFETIME = timedelta(days=30)
 # Refresh a session's expiry at most this often, not on every request.
 TOUCH_EVERY = timedelta(minutes=10)
 # Browsers only send this header from our own scripts: a form on another site can't add it (CSRF).
 CSRF_HEADER = "x-requested-with"
-CSRF_VALUE = "dgs"
+CSRF_VALUE = "possum"
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 # Checked when the user doesn't exist, so a login takes as long either way.

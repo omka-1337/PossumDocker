@@ -47,7 +47,7 @@ class FakeRuntime:
         on_log(f"pulling {image}")
 
     async def ensure_volume(self, server_id):
-        return f"dgs-{server_id}-data"
+        return f"possum-{server_id}-data"
 
     async def run_install(self, server_id, spec, on_log):
         if self.fail_install:
@@ -112,7 +112,7 @@ def client(tmp_path, providers, runtime) -> TestClient:
     )
     # Like the web UI: every request carries the CSRF header.
     with TestClient(
-        create_app(settings, providers, runtime), headers={"X-Requested-With": "dgs"}
+        create_app(settings, providers, runtime), headers={"X-Requested-With": "possum"}
     ) as test_client:
         add_user(test_client, "admin", ADMIN_PASSWORD, is_admin=True)
         login(test_client, "admin", ADMIN_PASSWORD)

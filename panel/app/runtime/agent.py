@@ -74,7 +74,7 @@ class AgentClient:
         if resp.status_code in (400, 404, 409, 413, 415, 422):
             raise FileError(message, resp.status_code)
         if resp.status_code == 401:
-            raise AgentError("the agent rejected the panel's token: DGS_AGENT_TOKEN differs between them")
+            raise AgentError("the agent rejected the panel's token: POSSUM_AGENT_TOKEN differs between them")
         raise AgentError(message)
 
     async def ndjson(self, path: str, body: dict, on_log: LogFn) -> None:
@@ -138,7 +138,7 @@ class AgentRuntime:
 
     async def ensure_volume(self, server_id: str) -> str:
         await self._call("POST", f"/v1/servers/{server_id}/volume")
-        return f"dgs-{server_id}-data"
+        return f"possum-{server_id}-data"
 
     async def run_install(self, server_id: str, spec: ContainerSpec, on_log: LogFn) -> None:
         script = await asyncio.to_thread(spec.script.read_bytes) if spec.script else None

@@ -15,7 +15,7 @@ target_metadata = Base.metadata
 
 
 def database_url() -> str:
-    # Set by app.core.db.run_migrations; falls back to DGS_DATABASE_URL for the alembic CLI.
+    # Set by app.core.db.run_migrations; falls back to POSSUM_DATABASE_URL for the alembic CLI.
     return config.get_main_option("sqlalchemy.url") or Settings().database_url
 
 

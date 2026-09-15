@@ -35,11 +35,11 @@ def create_app(
             docker = runtime
         elif settings.agent_url:
             if not settings.agent_token:
-                raise RuntimeError("DGS_AGENT_URL is set but DGS_AGENT_TOKEN isn't")
+                raise RuntimeError("POSSUM_AGENT_URL is set but POSSUM_AGENT_TOKEN isn't")
             docker = AgentRuntime(settings.agent_url, settings.agent_token)
         else:
             logging.getLogger(__name__).warning(
-                "no DGS_AGENT_URL: talking to Docker directly (development only)"
+                "no POSSUM_AGENT_URL: talking to Docker directly (development only)"
             )
             docker = DockerRuntime()
 
@@ -66,7 +66,7 @@ def create_app(
             await docker.close()
         await engine.dispose()
 
-    app = FastAPI(title="DockerGameServer Panel", lifespan=lifespan)
+    app = FastAPI(title="PossumDocker Panel", lifespan=lifespan)
     app.include_router(router)
     if (settings.web_dir / "index.html").is_file():
         serve_web(app, settings.web_dir)

@@ -1,10 +1,10 @@
-// The agent: the only part of DockerGameServer that talks to Docker. The panel sends it
+// The agent: the only part of PossumDocker that talks to Docker. The panel sends it
 // container specs and file operations over HTTP, authenticated with a shared token.
 //
-//	DGS_AGENT_TOKEN   required, the same value the panel has
-//	DGS_AGENT_LISTEN  address to listen on (default :8081)
+//	POSSUM_AGENT_TOKEN   required, the same value the panel has
+//	POSSUM_AGENT_LISTEN  address to listen on (default :8081)
 //	DOCKER_HOST       Docker daemon (default unix:///var/run/docker.sock)
-//	DGS_LOG_LEVEL     debug, info (default), warn, error
+//	POSSUM_LOG_LEVEL     debug, info (default), warn, error
 //
 // `agent healthcheck` checks a running agent, for the container's HEALTHCHECK (the image has no shell).
 package main
@@ -20,10 +20,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/omka-1337/DockerGameServer/agent/internal/api"
-	"github.com/omka-1337/DockerGameServer/agent/internal/engine"
-	"github.com/omka-1337/DockerGameServer/agent/internal/files"
-	"github.com/omka-1337/DockerGameServer/agent/internal/runtime"
+	"github.com/omka-1337/PossumDocker/agent/internal/api"
+	"github.com/omka-1337/PossumDocker/agent/internal/engine"
+	"github.com/omka-1337/PossumDocker/agent/internal/files"
+	"github.com/omka-1337/PossumDocker/agent/internal/runtime"
 )
 
 func main() {
@@ -45,14 +45,14 @@ func env(key, fallback string) string {
 
 func run() error {
 	var level slog.Level
-	if err := level.UnmarshalText([]byte(env("DGS_LOG_LEVEL", "info"))); err != nil {
-		return fmt.Errorf("DGS_LOG_LEVEL: %w", err)
+	if err := level.UnmarshalText([]byte(env("POSSUM_LOG_LEVEL", "info"))); err != nil {
+		return fmt.Errorf("POSSUM_LOG_LEVEL: %w", err)
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
 
-	token := os.Getenv("DGS_AGENT_TOKEN")
+	token := os.Getenv("POSSUM_AGENT_TOKEN")
 	if len(token) < 32 {
-		return errors.New("DGS_AGENT_TOKEN must be set to a random value of at least 32 characters")
+		return errors.New("POSSUM_AGENT_TOKEN must be set to a random value of at least 32 characters")
 	}
 	docker, err := engine.New(env("DOCKER_HOST", "unix:///var/run/docker.sock"))
 	if err != nil {
@@ -67,7 +67,7 @@ func run() error {
 	go fs.ReapIdle(ctx)
 
 	server := &http.Server{
-		Addr:              env("DGS_AGENT_LISTEN", ":8081"),
+		Addr:              env("POSSUM_AGENT_LISTEN", ":8081"),
 		Handler:           api.New(token, rt, fs, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 		// No write timeout: console logs, installs and backups stream for as long as they take.
@@ -90,7 +90,7 @@ func run() error {
 }
 
 func healthcheck() int {
-	addr := env("DGS_AGENT_LISTEN", ":8081")
+	addr := env("POSSUM_AGENT_LISTEN", ":8081")
 	if addr[0] == ':' {
 		addr = "127.0.0.1" + addr
 	}

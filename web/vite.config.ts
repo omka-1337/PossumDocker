@@ -9,7 +9,7 @@ export default defineConfig({
     // In development the panel runs separately: `uvicorn app.main:app --reload --port 8080`.
     proxy: {
       // ws: the server console is a WebSocket under /api.
-      '/api': { target: process.env.DGS_PANEL_URL ?? 'http://localhost:8080', ws: true },
+      '/api': { target: process.env.POSSUM_PANEL_URL ?? 'http://localhost:8080', ws: true },
     },
   },
 })

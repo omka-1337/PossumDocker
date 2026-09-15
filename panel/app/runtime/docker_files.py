@@ -78,7 +78,7 @@ class DockerFiles:
             config = {
                 "Image": HELPER_IMAGE,
                 "Cmd": ["sleep", "infinity"],
-                "Labels": {"dgs.managed": "true", "dgs.server_id": server_id, "dgs.role": "files"},
+                "Labels": {"possum.managed": "true", "possum.server_id": server_id, "possum.role": "files"},
                 "HostConfig": {
                     "Binds": [f"{volume_name(server_id)}:{ROOT}"],
                     "NetworkMode": "none",

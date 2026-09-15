@@ -17,10 +17,8 @@ export function LoginPage() {
     <div className="flex min-h-dvh items-center justify-center bg-page px-4">
       <form onSubmit={submit} className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mb-3 text-6xl font-semibold tracking-tighter text-zinc-600 select-none" aria-hidden>
-            &gt;_
-          </div>
-          <h1 className="text-lg font-semibold">dockergameserver</h1>
+          <img src="/logo.png" alt="" className="mx-auto mb-3 size-24 select-none" draggable={false} />
+          <h1 className="text-lg font-semibold">possumdocker</h1>
         </div>
 
         <div className="space-y-3 rounded-3xl border border-line-soft bg-panel p-5">

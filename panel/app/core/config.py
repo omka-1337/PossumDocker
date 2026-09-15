@@ -7,9 +7,9 @@ REPO_ROOT = PANEL_DIR.parent
 
 
 class Settings(BaseSettings):
-    """Panel configuration. Every field can be overridden with a DGS_* env variable."""
+    """Panel configuration. Every field can be overridden with a POSSUM_* env variable."""
 
-    model_config = SettingsConfigDict(env_prefix="DGS_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="POSSUM_", env_file=".env", extra="ignore")
 
     # sqlite+aiosqlite:///path/to/panel.db  or  postgresql+asyncpg://user:pass@host/db
     database_url: str = f"sqlite+aiosqlite:///{REPO_ROOT / 'data' / 'panel.db'}"

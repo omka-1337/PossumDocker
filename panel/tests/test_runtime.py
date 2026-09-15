@@ -78,7 +78,7 @@ def test_cs16_install_uses_bundled_script():
     spec = build_spec(template, server, TEMPLATES_DIR)
     assert spec.install.script == TEMPLATES_DIR / "install" / "cs16.sh"
     assert spec.install.mounts == []  # the script is copied in, not bind-mounted from the host
-    assert spec.install.entrypoint == ["sh", "/dgs/install.sh"]
+    assert spec.install.entrypoint == ["sh", "/possum/install.sh"]
     assert spec.runtime.ports[0].host == 27020 and spec.runtime.ports[0].protocol == "udp"
 
 
@@ -237,10 +237,10 @@ def test_install_script_goes_in_as_an_archive():
 
     from app.runtime.docker import _tar_with
 
-    with tarfile.open(fileobj=io.BytesIO(_tar_with("dgs/install.sh", b"echo hi"))) as tar:
-        member = tar.getmember("dgs/install.sh")
+    with tarfile.open(fileobj=io.BytesIO(_tar_with("possum/install.sh", b"echo hi"))) as tar:
+        member = tar.getmember("possum/install.sh")
         assert tar.extractfile(member).read() == b"echo hi" and member.mode == 0o755
-        assert tar.getmember("dgs").isdir()
+        assert tar.getmember("possum").isdir()
 
 
 def test_minecraft_memory_limit_follows_the_heap():

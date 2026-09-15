@@ -1,6 +1,6 @@
-# DockerGameServer
+<p align="center"><img src="web/public/logo.png" alt="" width="128"></p>
 
-> Working title.
+# PossumDocker
 
 Self-hosted panel for creating and running game servers — from Minecraft to Counter-Strike 1.6 — in Docker containers.
 
@@ -20,8 +20,8 @@ Self-hosted panel for creating and running game servers — from Minecraft to Co
 Needs Docker with Compose, `make` and `git` on a Linux machine.
 
 ```bash
-git clone https://github.com/omka-1337/DockerGameServer.git
-cd DockerGameServer
+git clone https://github.com/omka-1337/PossumDocker.git
+cd PossumDocker
 make start
 ```
 
@@ -36,15 +36,15 @@ The first `make start` builds the panel, asks for an administrator account and p
 | `make logs` | follow the panel's logs |
 | `make admin` | add an administrator or reset a forgotten password |
 
-Everything the panel keeps (database, backups) is in `data/`. Game servers live in Docker volumes named `dgs-<id>-data`.
+Everything the panel keeps (database, backups) is in `data/`. Game servers live in Docker volumes named `possum-<id>-data`.
 
 ## Development
 
 ### Panel
 
 Requires Python 3.12+ and, without an agent, access to Docker (the user must be able to run `docker ps`).
-Game servers get containers named `dgs-<id>` and volumes named `dgs-<id>-data`.
-The file browser starts a small `busybox` helper (`dgs-<id>-files`, no network) that is removed when idle.
+Game servers get containers named `possum-<id>` and volumes named `possum-<id>-data`.
+The file browser starts a small `busybox` helper (`possum-<id>-files`, no network) that is removed when idle.
 
 ```bash
 cd panel
@@ -60,16 +60,16 @@ python -m venv .venv
 
 Data is stored in `data/panel.db` (SQLite) by default; migrations run on startup.
 Use Postgres instead with `pip install -e ".[postgres]"` and
-`DGS_DATABASE_URL=postgresql+asyncpg://user:pass@host/db`.
+`POSSUM_DATABASE_URL=postgresql+asyncpg://user:pass@host/db`.
 
 Settings (environment variables):
 
 | Variable | Default | |
 |---|---|---|
-| `DGS_DATABASE_URL` | `sqlite+aiosqlite:///data/panel.db` | database |
-| `DGS_BACKUPS_DIR` | `data/backups` | server backups; ideally on another disk |
-| `DGS_TIMEZONE` | the machine's (`/etc/localtime`) | time zone schedules run in, e.g. `Europe/Kyiv` |
-| `DGS_CACHE_DIR` | `data/cache` | downloaded game art, safe to delete |
+| `POSSUM_DATABASE_URL` | `sqlite+aiosqlite:///data/panel.db` | database |
+| `POSSUM_BACKUPS_DIR` | `data/backups` | server backups; ideally on another disk |
+| `POSSUM_TIMEZONE` | the machine's (`/etc/localtime`) | time zone schedules run in, e.g. `Europe/Kyiv` |
+| `POSSUM_CACHE_DIR` | `data/cache` | downloaded game art, safe to delete |
 
 New migration after changing `app/models.py`:
 
@@ -84,11 +84,11 @@ Requires Go 1.27+ (or build it with Docker: `docker build agent/`).
 ```bash
 cd agent
 go test ./...
-DGS_AGENT_TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n') DGS_AGENT_LISTEN=127.0.0.1:8081 go run ./cmd/agent
+POSSUM_AGENT_TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n') POSSUM_AGENT_LISTEN=127.0.0.1:8081 go run ./cmd/agent
 ```
 
-Point a development panel at it with `DGS_AGENT_URL=http://127.0.0.1:8081` and the same `DGS_AGENT_TOKEN`.
-Without `DGS_AGENT_URL` the panel talks to Docker itself, which is only meant for development.
+Point a development panel at it with `POSSUM_AGENT_URL=http://127.0.0.1:8081` and the same `POSSUM_AGENT_TOKEN`.
+Without `POSSUM_AGENT_URL` the panel talks to Docker itself, which is only meant for development.
 
 ### Web UI
 
@@ -102,7 +102,7 @@ npm run build   # type-check + production build into web/dist
 npm run lint
 ```
 
-If the panel is not on `localhost:8080`, set `DGS_PANEL_URL=http://host:port`.
+If the panel is not on `localhost:8080`, set `POSSUM_PANEL_URL=http://host:port`.
 
 ## License
 

@@ -51,7 +51,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { DetailsView, IconsView, type Sort, type SortKey } from './FileViews'
 import { TextEditor } from './TextEditor'
 
-const DRAG_TYPE = 'application/x-dgs-files'
+const DRAG_TYPE = 'application/x-possum-files'
 const TEXT_EXTENSIONS = new Set([
   'txt', 'log', 'json', 'json5', 'yml', 'yaml', 'toml', 'properties', 'cfg', 'conf', 'ini', 'xml',
   'md', 'sh', 'bat', 'csv', 'js', 'lua', 'sk', 'secret', 'env', 'list', 'mcmeta', 'txt_',
@@ -89,8 +89,8 @@ export function FileBrowser({ serverId }: { serverId: string }) {
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const anchor = useRef<string | null>(null)
-  const [view, setView] = useStoredState<'icons' | 'details'>('dgs.files.view', 'icons')
-  const [showHidden, setShowHidden] = useStoredState('dgs.files.hidden', false)
+  const [view, setView] = useStoredState<'icons' | 'details'>('possum.files.view', 'icons')
+  const [showHidden, setShowHidden] = useStoredState('possum.files.hidden', false)
   const [sort, setSort] = useState<Sort>({ key: 'name', dir: 1 })
   const [renaming, setRenaming] = useState<string | null>(null)
   const [clipboard, setClipboard] = useState<Clipboard | null>(null)

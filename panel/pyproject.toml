@@ -1,5 +1,5 @@
 [project]
-name = "dgs-panel"
+name = "possumdocker-panel"
 version = "0.1.0"
 description = "Web panel for self-hosted game servers running in Docker"
 license = "AGPL-3.0-or-later"

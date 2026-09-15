@@ -17,14 +17,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omka-1337/DockerGameServer/agent/internal/engine"
+	"github.com/omka-1337/PossumDocker/agent/internal/engine"
 )
 
 // Labels mark what the agent owns, so it never touches other containers on the host.
 const (
-	LabelManaged = "dgs.managed"
-	LabelServer  = "dgs.server_id"
-	LabelRole    = "dgs.role"
+	LabelManaged = "possum.managed"
+	LabelServer  = "possum.server_id"
+	LabelRole    = "possum.role"
 )
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
@@ -32,8 +32,8 @@ var validID = regexp.MustCompile(`^[A-Za-z0-9-]{1,64}$`)
 // ValidID reports whether id is safe to put into container and volume names.
 func ValidID(id string) bool { return validID.MatchString(id) }
 
-func ContainerName(serverID string) string { return "dgs-" + serverID }
-func VolumeName(serverID string) string    { return "dgs-" + serverID + "-data" }
+func ContainerName(serverID string) string { return "possum-" + serverID }
+func VolumeName(serverID string) string    { return "possum-" + serverID + "-data" }
 
 func labels(serverID, role string) map[string]string {
 	return map[string]string{LabelManaged: "true", LabelServer: serverID, LabelRole: role}
@@ -237,7 +237,7 @@ func (r *Runtime) RunInstall(ctx context.Context, serverID string, spec Containe
 	defer r.docker.ContainerRemove(context.WithoutCancel(ctx), name) //nolint:errcheck
 
 	if len(spec.Script) > 0 {
-		archive, err := tarWith("dgs/install.sh", spec.Script, 0o755)
+		archive, err := tarWith("possum/install.sh", spec.Script, 0o755)
 		if err != nil {
 			return err
 		}

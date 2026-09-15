@@ -22,8 +22,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/omka-1337/DockerGameServer/agent/internal/engine"
-	"github.com/omka-1337/DockerGameServer/agent/internal/runtime"
+	"github.com/omka-1337/PossumDocker/agent/internal/engine"
+	"github.com/omka-1337/PossumDocker/agent/internal/runtime"
 )
 
 const (

@@ -27,7 +27,7 @@ def resolve_timezone(name: str | None) -> tzinfo:
             except (ZoneInfoNotFoundError, ValueError):
                 if candidate == name:
                     raise
-    log.warning("could not find the system time zone, schedules run in UTC (set DGS_TIMEZONE)")
+    log.warning("could not find the system time zone, schedules run in UTC (set POSSUM_TIMEZONE)")
     return UTC
 
 

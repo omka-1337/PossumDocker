@@ -26,11 +26,11 @@ def grant(client, server_id, user_id, *permissions):
 def test_login_logout_and_me(client):
     me = client.get("/api/auth/me").json()
     assert me["username"] == "admin" and me["is_admin"] is True
-    cookie = client.cookies.get("dgs_session")
+    cookie = client.cookies.get("possum_session")
     assert cookie and len(cookie) > 30
 
     assert client.post("/api/auth/logout").status_code == 204
-    client.cookies.set("dgs_session", cookie)  # the old cookie is dead server-side too
+    client.cookies.set("possum_session", cookie)  # the old cookie is dead server-side too
     assert client.get("/api/auth/me").status_code == 401
 
 
@@ -59,7 +59,7 @@ def test_state_changes_need_the_csrf_header(client):
 
 
 def test_change_password_logs_out_other_sessions(client):
-    other = client.cookies.get("dgs_session")
+    other = client.cookies.get("possum_session")
     login(client, "admin", ADMIN_PASSWORD)  # a second session, this "browser"
     resp = client.post(
         "/api/auth/password", json={"current_password": "wrong", "new_password": "new-password-1"}
@@ -72,10 +72,10 @@ def test_change_password_logs_out_other_sessions(client):
         == 204
     )
     assert client.get("/api/auth/me").status_code == 200  # still logged in here
-    current = client.cookies.get("dgs_session")
-    client.cookies.set("dgs_session", other)
+    current = client.cookies.get("possum_session")
+    client.cookies.set("possum_session", other)
     assert client.get("/api/auth/me").status_code == 401  # the other session is gone
-    client.cookies.set("dgs_session", current)
+    client.cookies.set("possum_session", current)
 
 
 # --- users ----------------------------------------------------------------------
@@ -116,10 +116,10 @@ def test_there_is_always_an_active_admin(client):
 def test_disabling_a_user_ends_their_sessions(client):
     user_id = add_user(client, "player", PASSWORD)
     login(client, "player", PASSWORD)
-    player_cookie = client.cookies.get("dgs_session")
+    player_cookie = client.cookies.get("possum_session")
     login(client, "admin", ADMIN_PASSWORD)
     client.patch(f"/api/users/{user_id}", json={"disabled": True})
-    client.cookies.set("dgs_session", player_cookie)
+    client.cookies.set("possum_session", player_cookie)
     assert client.get("/api/auth/me").status_code == 401
 
 

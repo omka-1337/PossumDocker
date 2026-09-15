@@ -13,7 +13,7 @@ start: .env token ## Build and start the panel; asks for an administrator accoun
 	$(COMPOSE) up -d --build --remove-orphans
 	@$(MAKE) --no-print-directory wait
 	@$(EXEC) python -m app.cli ensure-admin
-	@echo "The panel is running at http://localhost:$$(grep '^DGS_PORT=' .env | cut -d= -f2)"
+	@echo "The panel is running at http://localhost:$$(grep '^POSSUM_PORT=' .env | cut -d= -f2)"
 
 stop: ## Stop the panel (game servers keep running)
 	$(COMPOSE) down
@@ -33,11 +33,11 @@ admin: ## Add an administrator or reset a forgotten password
 # Settings for this machine, written once. Edit .env to change the port or time zone.
 .env:
 	@{ \
-		echo "DGS_PORT=8080"; \
-		echo "DGS_UID=$$(id -u)"; \
-		echo "DGS_GID=$$(id -g)"; \
+		echo "POSSUM_PORT=8080"; \
+		echo "POSSUM_UID=$$(id -u)"; \
+		echo "POSSUM_GID=$$(id -g)"; \
 		tz=$$(timedatectl show -p Timezone --value 2>/dev/null || readlink /etc/localtime | sed 's|.*/zoneinfo/||'); \
-		echo "DGS_TIMEZONE=$${tz:-UTC}"; \
+		echo "POSSUM_TIMEZONE=$${tz:-UTC}"; \
 	} > .env
 	@mkdir -p data
 	@echo "Created .env:"; sed 's/^/  /' .env
@@ -45,8 +45,8 @@ admin: ## Add an administrator or reset a forgotten password
 # The secret the panel and the agent share. Added to .env once, also to an .env from an older version.
 .PHONY: token
 token: .env
-	@grep -q '^DGS_AGENT_TOKEN=' .env || { \
-		echo "DGS_AGENT_TOKEN=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env; \
+	@grep -q '^POSSUM_AGENT_TOKEN=' .env || { \
+		echo "POSSUM_AGENT_TOKEN=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env; \
 		echo "Added an agent token to .env"; \
 	}
 

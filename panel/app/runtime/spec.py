@@ -41,7 +41,7 @@ class ContainerSpec:
     # Limits; None: no limit.
     memory_mb: int | None = None
     cpus: float | None = None
-    # Host file mounted read-only at /dgs/install.sh
+    # Host file mounted read-only at /possum/install.sh
     script: Path | None = None
 
 
@@ -159,7 +159,7 @@ def build_spec(template: Template, server: Server, templates_dir: Path) -> Serve
                 raise ValueError(f"install script not found: {install.script}")
         install_spec = ContainerSpec(
             image=_render(install.image, context, strict=True),
-            entrypoint=["sh", "/dgs/install.sh"] if script else _render_list(install.entrypoint, context),
+            entrypoint=["sh", "/possum/install.sh"] if script else _render_list(install.entrypoint, context),
             command=None if script else _render_list(install.command, context),
             env={**runtime_env, **_render_env(install.env, context)},
             data_path=runtime.data_path,

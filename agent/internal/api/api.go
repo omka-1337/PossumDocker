@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omka-1337/DockerGameServer/agent/internal/engine"
-	"github.com/omka-1337/DockerGameServer/agent/internal/files"
-	"github.com/omka-1337/DockerGameServer/agent/internal/runtime"
+	"github.com/omka-1337/PossumDocker/agent/internal/engine"
+	"github.com/omka-1337/PossumDocker/agent/internal/files"
+	"github.com/omka-1337/PossumDocker/agent/internal/runtime"
 )
 
 type Server struct {

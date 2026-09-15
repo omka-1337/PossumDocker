@@ -17,9 +17,7 @@ export function Layout() {
     // Phones: content on top, nav bar at the bottom. Wider screens: sidebar on the left.
     <div className="flex h-dvh flex-col-reverse sm:flex-row">
       <nav className="flex shrink-0 justify-around gap-1 p-1.5 sm:w-[5.5rem] sm:flex-col sm:justify-start sm:py-4">
-        <div className="mb-4 hidden text-center text-2xl font-semibold tracking-tighter sm:block" aria-hidden>
-          &gt;_
-        </div>
+        <img src="/logo.png" alt="" className="mx-auto mb-4 hidden size-11 select-none sm:block" draggable={false} />
         {/* A server's page belongs to "servers" too. */}
         <NavItem to="/" matches={(path) => path === '/' || path.startsWith('/servers/')} icon={IconServer2} label="servers" />
         {me?.is_admin && <NavItem to="/users" icon={IconUsers} label="users" />}

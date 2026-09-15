@@ -34,10 +34,10 @@ function parseError(status: number, body: unknown): ApiError {
 }
 
 // The panel refuses state changes without this header: other sites can't add it (CSRF).
-export const CSRF_HEADERS = { 'X-Requested-With': 'dgs' }
+export const CSRF_HEADERS = { 'X-Requested-With': 'possum' }
 
 /** Fired when the session is gone (logged out elsewhere, expired): the app shows the login page. */
-export const UNAUTHORIZED_EVENT = 'dgs:unauthorized'
+export const UNAUTHORIZED_EVENT = 'possum:unauthorized'
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`/api${path}`, {

@@ -23,11 +23,11 @@ COPY panel/ ./
 COPY templates/ /app/templates/
 COPY --from=web /web/dist/ /app/web/
 
-ENV DGS_TEMPLATES_DIR=/app/templates \
-    DGS_WEB_DIR=/app/web \
-    DGS_DATABASE_URL=sqlite+aiosqlite:////data/panel.db \
-    DGS_BACKUPS_DIR=/data/backups \
-    DGS_CACHE_DIR=/data/cache
+ENV POSSUM_TEMPLATES_DIR=/app/templates \
+    POSSUM_WEB_DIR=/app/web \
+    POSSUM_DATABASE_URL=sqlite+aiosqlite:////data/panel.db \
+    POSSUM_BACKUPS_DIR=/data/backups \
+    POSSUM_CACHE_DIR=/data/cache
 
 RUN mkdir -p /data && chmod 777 /data
 EXPOSE 8080

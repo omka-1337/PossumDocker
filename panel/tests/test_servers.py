@@ -124,3 +124,60 @@ def test_list_get_delete(client, runtime):
 
 def test_unknown_template(client):
     assert create(client, "nope").status_code == 404
+
+
+def test_edit_game_settings(client, runtime):
+    server = create_installed(client, "cs16", name="Old")
+    url = f"/api/servers/{server['id']}"
+    password = runtime.specs[server["id"]].command[
+        runtime.specs[server["id"]].command.index("+rcon_password") + 1
+    ]
+
+    resp = client.patch(url, json={"name": "New", "values": {"vac": False, "max_players": 12}})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["server"]["name"] == "New"
+    assert body["server"]["values"] == {"map": "de_dust2", "max_players": 12, "vac": False}
+    assert body["restart_required"] is False and body["reinstalling"] is False
+
+    # Applies on the next start, and the generated RCON password survives the edit.
+    client.post(f"{url}/start")
+    command = runtime.specs[server["id"]].command
+    assert "-insecure" in command and "12" in command
+    assert command[command.index("+rcon_password") + 1] == password
+
+
+def test_edit_while_running_asks_for_restart(client):
+    server = create_installed(client, "cs16")
+    url = f"/api/servers/{server['id']}"
+    client.post(f"{url}/start")
+    assert client.patch(url, json={"values": {"map": "de_nuke"}}).json()["restart_required"] is True
+
+
+def test_non_editable_fields_are_rejected(client):
+    server = create_installed(client, "minecraft-java", version="1.21.1", eula=True)
+    resp = client.patch(f"/api/servers/{server['id']}", json={"values": {"version": "1.20.4", "bogus": 1}})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["errors"] == {
+        "version": "can't be changed after the server is created",
+        "bogus": "unknown field",
+    }
+    resp = client.patch(f"/api/servers/{server['id']}", json={"values": {"memory_mb": 100}})
+    assert resp.json()["detail"]["errors"] == {"memory_mb": "must be at least 512"}
+
+
+def test_edit_does_not_recheck_unchanged_versions(client, providers):
+    server = create_installed(client, "minecraft-java", version="1.21.1", eula=True)
+
+    async def offline(_client, _params):
+        raise __import__("httpx").ConnectError("offline")
+
+    providers.register("minecraft.versions", offline)
+    resp = client.patch(f"/api/servers/{server['id']}", json={"values": {"memory_mb": 4096}})
+    assert resp.status_code == 200, resp.text
+
+
+def test_start_refuses_a_running_server(client):
+    server = create_installed(client, "cs16")
+    client.post(f"/api/servers/{server['id']}/start")
+    assert client.post(f"/api/servers/{server['id']}/start").status_code == 409

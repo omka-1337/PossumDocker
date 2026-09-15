@@ -120,6 +120,14 @@ export interface Server {
   created_at: string
 }
 
+export interface ServerUpdateResult {
+  server: Server
+  // Running with the old settings: they apply on the next (re)start
+  restart_required: boolean
+  // A changed field rebuilds the game files; the install step started
+  reinstalling: boolean
+}
+
 export interface ServerCreate {
   template_id: string
   name: string

@@ -26,7 +26,9 @@ cd panel
 python -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/uvicorn app.main:app --reload --port 8080   # API docs: http://localhost:8080/docs
+# --reload-dir/--reload-include: restart on template changes too, not only on Python code
+.venv/bin/uvicorn app.main:app --port 8080 --reload --reload-dir app --reload-dir ../templates --reload-include '*.yaml'
+# API docs: http://localhost:8080/docs
 .venv/bin/pytest
 .venv/bin/ruff check .
 ```

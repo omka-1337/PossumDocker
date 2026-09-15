@@ -221,10 +221,16 @@ class ServerManager:
 
     async def start(self, server: Server) -> None:
         self._require_installed(server)
+        state = await self.runtime.state(server.id)
+        if state and state.status in ("running", "restarting", "paused"):
+            raise ServerBusy("the server is already running")
         await self._start(server)
 
     async def _start(self, server: Server) -> None:
-        await self._ensure_container(server)
+        # Always from the current values and template: edited settings apply on the next start.
+        # The data lives in the volume, so a fresh container loses nothing but old console output.
+        spec = build_spec(self._templates[server.template_id], server, self._templates_dir)
+        await self.runtime.create(server.id, spec.runtime)
         await self.runtime.start(server.id)
 
     async def _ensure_container(self, server: Server) -> None:

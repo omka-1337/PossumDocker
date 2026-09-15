@@ -33,9 +33,18 @@ def dependency_params(field: SelectField, values: dict[str, Any]) -> dict[str, A
 
 
 async def validate_values(
-    template: Template, raw: dict[str, Any], providers: OptionsProviders
+    template: Template,
+    raw: dict[str, Any],
+    providers: OptionsProviders,
+    previous: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return clean values (defaults applied, hidden fields dropped) or raise ValuesError."""
+    """Return clean values (defaults applied, hidden fields dropped) or raise ValuesError.
+
+    `previous`: the server's current values when editing. Hidden secrets keep their value instead of
+    being generated again, and unchanged dynamic selects aren't re-checked against a provider (so
+    changing the memory doesn't need Mojang to be reachable).
+    """
+    previous = previous or {}
     errors: dict[str, str] = {}
     known = {f.id for f in template.fields}
     for key in raw.keys() - known:
@@ -49,7 +58,7 @@ async def validate_values(
 
         value = raw.get(field.id)
         if isinstance(field, SecretField) and field.hidden:
-            value = None  # never user-supplied
+            value = previous.get(field.id)  # never user-supplied
         if value is None or value == "":
             value = getattr(field, "default", None)
 
@@ -60,7 +69,10 @@ async def validate_values(
                 errors[field.id] = "required"
             continue
 
-        error = await _check(field, value, clean, providers)
+        unchanged_dynamic = (
+            isinstance(field, SelectField) and field.options_from and previous.get(field.id) == value
+        )
+        error = None if unchanged_dynamic else await _check(field, value, clean, providers)
         if error:
             errors[field.id] = error
         else:

@@ -4,9 +4,11 @@ import {
   TRANSITIONAL,
   type ConfigRead,
   type ConfigSummary,
+  type FieldValues,
   type Option,
   type Server,
   type ServerCreate,
+  type ServerUpdateResult,
   type TemplateDetail,
   type TemplateSummary,
 } from './types'
@@ -113,6 +115,15 @@ export function useServerAction(id: string) {
   return useMutation({
     mutationFn: (action: ServerAction) => api<Server>(`/servers/${id}/${action}`, { method: 'POST' }),
     onSuccess: update,
+  })
+}
+
+export function useUpdateServer(id: string) {
+  const update = useUpdateServerCache()
+  return useMutation({
+    mutationFn: (body: { name?: string; values: FieldValues }) =>
+      api<ServerUpdateResult>(`/servers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: (result) => update(result.server),
   })
 }
 

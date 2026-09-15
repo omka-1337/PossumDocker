@@ -1,7 +1,7 @@
 import { IconLock, IconSearch } from '@tabler/icons-react'
 import { useState } from 'react'
 import { ApiError } from '../api/client'
-import { useConfig, useServerAction, useUpdateConfig } from '../api/queries'
+import { useConfig, useUpdateConfig } from '../api/queries'
 import type { ConfigEntry, Server } from '../api/types'
 import { FieldError, inputClass, Select } from './FieldInput'
 import { Button, Segmented, Switch } from './ui'
@@ -11,16 +11,15 @@ const SEGMENTED_MAX = 4
 interface Props {
   server: Server
   configId: string
+  onRestartNeeded: () => void
 }
 
-export function ConfigEditor({ server, configId }: Props) {
+export function ConfigEditor({ server, configId, onRestartNeeded }: Props) {
   const { data: config, isPending, isError, error } = useConfig(server.id, configId)
   // Only the keys the user changed; sent as a partial update.
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
-  const [savedWhileRunning, setSavedWhileRunning] = useState(false)
   const update = useUpdateConfig(server.id, configId)
-  const restart = useServerAction(server.id)
 
   if (isPending) return <p className="text-sm text-muted">loading…</p>
   if (isError) return <p className="text-sm text-red-400">{error.message}</p>
@@ -57,7 +56,8 @@ export function ConfigEditor({ server, configId }: Props) {
     update.mutate(draft, {
       onSuccess: () => {
         setDraft({})
-        setSavedWhileRunning(running)
+        // The game reads its config on start: a running server needs a restart to see it.
+        if (running) onRestartNeeded()
       },
     })
 
@@ -83,20 +83,6 @@ export function ConfigEditor({ server, configId }: Props) {
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-
-      {savedWhileRunning && (
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-sky-950/40 px-3 py-2.5 text-sm text-sky-200">
-          saved. the server reads {config.path} on start.
-          {running && (
-            <Button
-              onClick={() => restart.mutate('restart', { onSuccess: () => setSavedWhileRunning(false) })}
-              disabled={restart.isPending}
-            >
-              restart now
-            </Button>
-          )}
-        </div>
-      )}
 
       {known.length > 0 && <div className="space-y-4">{known.map(row)}</div>}
 

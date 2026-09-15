@@ -9,7 +9,6 @@ import {
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import {
-  useConfigs,
   useDeleteServer,
   useInstallLog,
   useServer,
@@ -19,9 +18,9 @@ import {
   type ServerAction,
 } from '../api/queries'
 import type { Server } from '../api/types'
-import { ConfigEditor } from '../components/ConfigEditor'
 import { FileBrowser } from '../components/files/FileBrowser'
 import { GameIcon } from '../components/GameIcon'
+import { SettingsTab } from '../components/SettingsTab'
 import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
 
@@ -85,10 +84,8 @@ function ServerView({ server }: { server: Server }) {
 }
 
 function InstalledTabs({ server }: { server: Server }) {
-  const { data: configs = [] } = useConfigs(server.id)
   const { data: template } = useTemplate(server.template_id)
-  // "console", "files" or "config:<id>" (prefixed, so a config can't be called "files").
-  const [tab, setTab] = useState('console')
+  const [tab, setTab] = useState<'console' | 'files' | 'settings'>('console')
 
   return (
     <>
@@ -96,7 +93,7 @@ function InstalledTabs({ server }: { server: Server }) {
         tabs={[
           { value: 'console', label: 'console' },
           { value: 'files', label: 'files' },
-          ...configs.map((c) => ({ value: `config:${c.id}`, label: c.label })),
+          { value: 'settings', label: 'settings' },
         ]}
         value={tab}
         onChange={setTab}
@@ -112,7 +109,7 @@ function InstalledTabs({ server }: { server: Server }) {
       ) : tab === 'files' ? (
         <FileBrowser serverId={server.id} />
       ) : (
-        <ConfigEditor key={tab} server={server} configId={tab.slice('config:'.length)} />
+        <SettingsTab server={server} />
       )}
     </>
   )

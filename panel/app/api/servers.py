@@ -37,6 +37,20 @@ class CommandBody(BaseModel):
     command: str = Field(min_length=1, max_length=1000)
 
 
+class ServerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    # Only fields the template marks `editable`; the rest keep their values.
+    values: dict[str, Any] = {}
+
+
+class ServerUpdateResult(BaseModel):
+    server: ServerRead
+    # The server is running with the old settings; they apply on the next (re)start.
+    restart_required: bool
+    # A changed field needs the game files rebuilt, so the install step was started.
+    reinstalling: bool
+
+
 def to_read(server: Server, templates: Templates, server_status: ServerStatus) -> ServerRead:
     return ServerRead(
         id=server.id,
@@ -104,6 +118,60 @@ async def create_server(
 @router.get("/{server_id}")
 async def get_server(server_id: str, session: Session, templates: Templates, manager: Manager) -> ServerRead:
     return await read_one(await get_server_or_404(session, server_id), templates, manager)
+
+
+@router.patch("/{server_id}")
+async def update_server(
+    server_id: str,
+    body: ServerUpdate,
+    session: Session,
+    templates: Templates,
+    providers: Providers,
+    manager: Manager,
+) -> ServerUpdateResult:
+    server = await get_server_or_404(session, server_id)
+    template = require_template(templates, server.template_id)
+
+    errors = {}
+    for key in body.values:
+        field = template.field(key)
+        if field is None:
+            errors[key] = "unknown field"
+        elif not field.editable:
+            errors[key] = "can't be changed after the server is created"
+    try:
+        if errors:
+            raise ValuesError(errors)
+        values = await validate_values(template, {**server.values, **body.values}, providers, server.values)
+    except ValuesError as exc:
+        raise HTTPException(422, {"errors": exc.errors}) from exc
+
+    changed = [f for f in template.fields if values.get(f.id) != server.values.get(f.id)]
+    # Editing one field can hide or reveal another; a non-editable one must not change that way.
+    if locked := [f.id for f in changed if not f.editable]:
+        raise HTTPException(
+            422, {"errors": {key: "can't be changed after the server is created" for key in locked}}
+        )
+
+    effects = {f.on_change for f in changed}
+    status_now = await manager.status_of(server)
+    running = status_now in (ServerStatus.RUNNING, ServerStatus.STARTING, ServerStatus.STOPPING)
+    if "reinstall" in effects and (running or manager.is_busy(server.id)):
+        raise HTTPException(409, "stop the server first: this change reinstalls the game")
+
+    if body.name is not None:
+        server.name = body.name.strip()
+    server.values = values
+    await session.commit()
+
+    reinstalling = "reinstall" in effects
+    if reinstalling:
+        await manager.install(server)
+    return ServerUpdateResult(
+        server=await read_one(server, templates, manager),
+        restart_required=running and "restart" in effects,
+        reinstalling=reinstalling,
+    )
 
 
 @router.get("/{server_id}/install-log")

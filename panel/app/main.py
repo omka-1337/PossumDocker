@@ -10,6 +10,7 @@ from app.core.config import Settings
 from app.core.db import create_engine, run_migrations
 from app.games.providers import OptionsProviders, default_providers
 from app.games.registry import load_templates
+from app.games.steam import SteamAssets
 from app.runtime.docker import DockerRuntime
 from app.runtime.manager import Runtime, ServerManager
 
@@ -33,6 +34,7 @@ def create_app(
             app.state.templates = load_templates(settings.templates_dir, app.state.providers)
             app.state.sessionmaker = sessionmaker
             app.state.templates_dir = settings.templates_dir
+            app.state.steam = SteamAssets(client, settings.cache_dir)
             app.state.manager = ServerManager(
                 docker, sessionmaker, app.state.templates, settings.templates_dir
             )

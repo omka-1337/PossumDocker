@@ -3,6 +3,7 @@ name: Counter-Strike 1.6
 description: Classic GoldSrc server (HLDS).
 icon: icons/cs16.svg
 color: "#c9862e"
+steam_appid: 10
 
 fields:
   - id: map

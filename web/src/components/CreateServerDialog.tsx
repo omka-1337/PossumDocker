@@ -1,8 +1,7 @@
-import { IconChevronRight } from '@tabler/icons-react'
-import { GameIcon } from './GameIcon'
 import { useState } from 'react'
 import { useTemplates } from '../api/queries'
 import type { Server } from '../api/types'
+import { GameCover } from './GameIcon'
 import { TemplateForm } from './TemplateForm'
 import { Modal } from './ui'
 
@@ -30,19 +29,18 @@ export function CreateServerDialog({ onClose, onCreated }: Props) {
       ) : isError ? (
         <p className="text-sm text-red-400">could not load the list of games</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {templates.map((t) => (
             <li key={t.id}>
               <button
                 onClick={() => setTemplateId(t.id)}
-                className="group flex w-full items-center gap-3 rounded-xl bg-raised p-3 text-left transition hover:bg-raised-hover active:scale-[0.99]"
+                className="group w-full overflow-hidden rounded-xl bg-raised text-left ring-sky-400/0 transition hover:bg-raised-hover hover:ring-2 hover:ring-zinc-500 active:scale-[0.99]"
               >
-                <GameIcon template={t} />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium lowercase">{t.name}</span>
+                <GameCover template={t} />
+                <span className="block px-3 py-2">
+                  <span className="block truncate text-sm font-medium lowercase">{t.name}</span>
                   {t.description && <span className="block truncate text-xs text-muted">{t.description}</span>}
                 </span>
-                <IconChevronRight size={18} className="text-muted transition group-hover:translate-x-0.5" />
               </button>
             </li>
           ))}

@@ -189,6 +189,8 @@ class Template(StrictModel):
     icon: Annotated[str | None, Field(pattern=r"^[\w./-]+\.(svg|png|webp)$")] = None
     # Background of the icon tile, e.g. "#de9b35".
     color: Annotated[str | None, Field(pattern=r"^#[0-9a-fA-F]{6}$")] = None
+    # For games on Steam: icon and cover art are fetched from Steam at runtime (`icon` stays the fallback).
+    steam_appid: Annotated[int | None, Field(gt=0)] = None
     fields: list[TemplateField] = []
     ports: list[Port] = []
     install: InstallSpec | None = None

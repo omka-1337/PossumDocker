@@ -67,8 +67,12 @@ export interface TemplateSummary {
   id: string
   name: string
   description: string | null
-  // null: no icon, the UI shows a generic one
+  // Square icon from Steam (may fail to load → fall back to icon_url)
+  steam_icon_url: string | null
+  // Icon bundled with the template; null: the UI shows a generic one
   icon_url: string | null
+  // Wide cover art, 460×215
+  cover_url: string | null
   // Icon tile background, e.g. "#c9862e"
   color: string | null
 }

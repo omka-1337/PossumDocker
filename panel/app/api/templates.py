@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -6,6 +8,7 @@ from app.api.deps import Providers, Templates, require_template
 from app.games.providers import ProviderError
 from app.games.registry import icon_path
 from app.games.schema import Option, Port, SecretField, SelectField, Template, TemplateField
+from app.games.steam import SteamAssets
 from app.games.validation import dependency_params
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -15,8 +18,12 @@ class TemplateSummary(BaseModel):
     id: str
     name: str
     description: str | None
-    # None when the template has no icon: the UI shows a generic one.
+    # Square icon from Steam; may fail to load, then the UI falls back to icon_url.
+    steam_icon_url: str | None
+    # Icon bundled with the template. None: the UI shows a generic one.
     icon_url: str | None
+    # Wide cover art (Steam header, 460×215).
+    cover_url: str | None
     color: str | None
 
 
@@ -28,11 +35,15 @@ class TemplateDetail(TemplateSummary):
 
 
 def summary(template: Template) -> dict:
+    base = f"/api/templates/{template.id}"
+    steam = template.steam_appid is not None
     return {
         "id": template.id,
         "name": template.name,
         "description": template.description,
-        "icon_url": f"/api/templates/{template.id}/icon" if template.icon else None,
+        "steam_icon_url": f"{base}/steam/icon" if steam else None,
+        "icon_url": f"{base}/icon" if template.icon else None,
+        "cover_url": f"{base}/steam/header" if steam else None,
         "color": template.color,
     }
 
@@ -63,6 +74,20 @@ async def get_template_icon(template_id: str, request: Request, templates: Templ
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get("/{template_id}/steam/{kind}")
+async def get_steam_asset(
+    template_id: str, kind: Literal["icon", "header"], request: Request, templates: Templates
+) -> FileResponse:
+    template = require_template(templates, template_id)
+    if template.steam_appid is None:
+        raise HTTPException(404, "this game is not on Steam")
+    steam: SteamAssets = request.app.state.steam
+    path = await steam.get(template.steam_appid, kind)
+    if path is None:
+        raise HTTPException(404, "Steam has no such image for this game right now")
+    return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/{template_id}/fields/{field_id}/options")

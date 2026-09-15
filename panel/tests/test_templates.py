@@ -74,6 +74,8 @@ def test_icons_are_served_safely(client):
     summary = {t["id"]: t for t in client.get("/api/templates").json()}["cs16"]
     assert summary["icon_url"] == "/api/templates/cs16/icon"
     assert summary["color"] == "#c9862e"
+    assert summary["steam_icon_url"] == "/api/templates/cs16/steam/icon"
+    assert summary["cover_url"] == "/api/templates/cs16/steam/header"
 
     resp = client.get(summary["icon_url"])
     assert resp.status_code == 200
@@ -96,3 +98,23 @@ def test_icon_must_exist_inside_templates_dir(tmp_path):
     )
     with pytest.raises(TemplateLoadError, match="not found"):
         load_templates(tmp_path, OptionsProviders(None))
+
+
+def test_steam_art_endpoints(client, tmp_path):
+    image = tmp_path / "header.jpg"
+    image.write_bytes(b"\xff\xd8jpeg")
+
+    class FakeAssets:
+        async def get(self, appid, kind):
+            assert appid == 10
+            return image if kind == "header" else None
+
+    client.app.state.steam = FakeAssets()
+    resp = client.get("/api/templates/cs16/steam/header")
+    assert resp.status_code == 200 and resp.headers["content-type"] == "image/jpeg"
+    assert client.get("/api/templates/cs16/steam/icon").status_code == 404  # Steam had none
+    assert client.get("/api/templates/cs16/steam/logo").status_code == 422
+    # Not a Steam game: no URLs, and the endpoint says so.
+    minecraft = client.get("/api/templates/minecraft-java").json()
+    assert minecraft["steam_icon_url"] is None and minecraft["cover_url"] is None
+    assert client.get("/api/templates/minecraft-java/steam/header").status_code == 404

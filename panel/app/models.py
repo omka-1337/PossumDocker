@@ -3,7 +3,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, TypeDecorator
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -18,6 +18,25 @@ def _uuid() -> str:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator):
+    """Always timezone-aware UTC in Python. SQLite has no time zones and would hand back naive
+    datetimes, which the browser then reads as local time."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        value = (value if value.tzinfo else value.replace(tzinfo=UTC)).astimezone(UTC)
+        return value.replace(tzinfo=None) if dialect.name == "sqlite" else value
+
+    def process_result_value(self, value: datetime | None, dialect) -> datetime | None:
+        if value is None:
+            return None
+        return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def _str_enum(enum_cls: type[enum.StrEnum]) -> SAEnum:
@@ -51,7 +70,7 @@ class Server(Base):
     state: Mapped[ServerState] = mapped_column(_str_enum(ServerState), default=ServerState.PENDING)
     # Why the last install failed, shown to the user.
     state_message: Mapped[str | None] = mapped_column(String(1000), default=None)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 
 class BackupStatus(enum.StrEnum):
@@ -75,7 +94,7 @@ class Backup(Base):
     exclude: Mapped[list[str]] = mapped_column(JSON, default=list)
     # Set when a schedule made it; used to keep only that schedule's newest N backups.
     schedule_id: Mapped[str | None] = mapped_column(String(36), default=None, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 
 class ScheduleAction(enum.StrEnum):
@@ -99,9 +118,9 @@ class Schedule(Base):
     # Backups: how many of this schedule's backups to keep.
     keep: Mapped[int | None] = mapped_column(Integer, default=None)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
-    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+    next_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
     # "ok" | "failed" | "skipped"
     last_status: Mapped[str | None] = mapped_column(String(16), default=None)
     last_message: Mapped[str | None] = mapped_column(String(1000), default=None)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)

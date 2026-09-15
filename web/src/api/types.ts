@@ -189,3 +189,28 @@ export interface BackupList {
   // The last restore of this server failed with this message
   restore_error: string | null
 }
+
+// Schedules (panel/app/api/schedules.py)
+
+export type ScheduleAction = 'backup' | 'restart' | 'start' | 'stop' | 'command'
+
+export interface ScheduleWrite {
+  name: string
+  // 5-field cron in the panel's time zone
+  cron: string
+  action: ScheduleAction
+  command: string | null
+  // backups only: how many of this schedule's backups to keep
+  keep: number | null
+  enabled: boolean
+}
+
+export interface Schedule extends ScheduleWrite {
+  id: string
+  // "At 04:00 every day"
+  description: string
+  next_run_at: string | null
+  last_run_at: string | null
+  last_status: 'ok' | 'skipped' | 'failed' | null
+  last_message: string | null
+}

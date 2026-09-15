@@ -13,6 +13,7 @@ from app.games.providers import OptionsProviders, default_providers
 from app.games.registry import load_templates
 from app.runtime.docker import DockerRuntime
 from app.runtime.manager import Runtime, ServerManager
+from app.runtime.scheduler import Scheduler, resolve_timezone
 
 
 def create_app(
@@ -40,7 +41,12 @@ def create_app(
             )
             await app.state.manager.recover()
             app.state.manager.start_background_jobs()
+            app.state.scheduler = Scheduler(
+                app.state.manager, sessionmaker, resolve_timezone(settings.timezone)
+            )
+            app.state.scheduler.start()
             yield
+            await app.state.scheduler.stop()
             await app.state.manager.shutdown()
 
         if runtime is None:

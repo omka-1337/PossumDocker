@@ -21,6 +21,7 @@ import type { Server } from '../api/types'
 import { BackupsTab } from '../components/BackupsTab'
 import { FileBrowser } from '../components/files/FileBrowser'
 import { GameIcon } from '../components/GameIcon'
+import { SchedulesTab } from '../components/SchedulesTab'
 import { SettingsTab } from '../components/SettingsTab'
 import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
@@ -86,7 +87,7 @@ function ServerView({ server }: { server: Server }) {
 
 function InstalledTabs({ server }: { server: Server }) {
   const { data: template } = useTemplate(server.template_id)
-  const [tab, setTab] = useState<'console' | 'files' | 'backups' | 'settings'>('console')
+  const [tab, setTab] = useState<'console' | 'files' | 'backups' | 'schedules' | 'settings'>('console')
 
   return (
     <>
@@ -95,6 +96,7 @@ function InstalledTabs({ server }: { server: Server }) {
           { value: 'console', label: 'console' },
           { value: 'files', label: 'files' },
           { value: 'backups', label: 'backups' },
+          { value: 'schedules', label: 'schedules' },
           { value: 'settings', label: 'settings' },
         ]}
         value={tab}
@@ -112,6 +114,8 @@ function InstalledTabs({ server }: { server: Server }) {
         <FileBrowser serverId={server.id} />
       ) : tab === 'backups' ? (
         <BackupsTab server={server} />
+      ) : tab === 'schedules' ? (
+        <SchedulesTab server={server} />
       ) : (
         <SettingsTab server={server} />
       )}

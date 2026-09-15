@@ -37,6 +37,15 @@ Data is stored in `data/panel.db` (SQLite) by default; migrations run on startup
 Use Postgres instead with `pip install -e ".[postgres]"` and
 `DGS_DATABASE_URL=postgresql+asyncpg://user:pass@host/db`.
 
+Settings (environment variables):
+
+| Variable | Default | |
+|---|---|---|
+| `DGS_DATABASE_URL` | `sqlite+aiosqlite:///data/panel.db` | database |
+| `DGS_BACKUPS_DIR` | `data/backups` | server backups; ideally on another disk |
+| `DGS_TIMEZONE` | the machine's (`/etc/localtime`) | time zone schedules run in, e.g. `Europe/Kyiv` |
+| `DGS_CACHE_DIR` | `data/cache` | downloaded game art, safe to delete |
+
 New migration after changing `app/models.py`:
 
 ```bash

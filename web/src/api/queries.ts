@@ -4,6 +4,8 @@ import {
   TRANSITIONAL,
   type BackupList,
   type ConfigRead,
+  type Schedule,
+  type ScheduleWrite,
   type ConfigSummary,
   type FieldValues,
   type Option,
@@ -26,6 +28,8 @@ const keys = {
   configs: (id: string) => ['servers', id, 'configs'] as const,
   config: (id: string, configId: string) => ['servers', id, 'configs', configId] as const,
   backups: (id: string) => ['servers', id, 'backups'] as const,
+  schedules: (id: string) => ['servers', id, 'schedules'] as const,
+  meta: ['meta'] as const,
 }
 
 const POLL_MS = 1500
@@ -183,6 +187,49 @@ export function useBackupActions(serverId: string) {
     }),
     remove: useMutation({
       mutationFn: (backupId: string) => api(`${base}/${backupId}`, { method: 'DELETE' }),
+      onSettled: refresh,
+    }),
+  }
+}
+
+export function useMeta() {
+  return useQuery({
+    queryKey: keys.meta,
+    queryFn: () => api<{ timezone: string }>('/meta'),
+    staleTime: Infinity,
+  })
+}
+
+export function useSchedules(serverId: string) {
+  return useQuery({
+    queryKey: keys.schedules(serverId),
+    queryFn: () => api<Schedule[]>(`/servers/${serverId}/schedules`),
+    // Next/last run times change on their own as schedules fire.
+    refetchInterval: 30_000,
+  })
+}
+
+export function useScheduleActions(serverId: string) {
+  const queryClient = useQueryClient()
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: keys.schedules(serverId) })
+    // Running one now may start a backup or change the server's status.
+    queryClient.invalidateQueries({ queryKey: keys.backups(serverId) })
+    queryClient.invalidateQueries({ queryKey: keys.server(serverId) })
+  }
+  const base = `/servers/${serverId}/schedules`
+  return {
+    save: useMutation({
+      mutationFn: ({ id, body }: { id: string | null; body: ScheduleWrite }) =>
+        api<Schedule>(id ? `${base}/${id}` : base, { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) }),
+      onSettled: refresh,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api(`${base}/${id}`, { method: 'DELETE' }),
+      onSettled: refresh,
+    }),
+    runNow: useMutation({
+      mutationFn: (id: string) => api<Schedule>(`${base}/${id}/run`, { method: 'POST' }),
       onSettled: refresh,
     }),
   }

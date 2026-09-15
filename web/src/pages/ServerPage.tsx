@@ -14,6 +14,7 @@ import {
   useInstallLog,
   useServer,
   useServerAction,
+  useTemplate,
   useTemplates,
   type ServerAction,
 } from '../api/queries'
@@ -85,6 +86,7 @@ function ServerView({ server }: { server: Server }) {
 
 function InstalledTabs({ server }: { server: Server }) {
   const { data: configs = [] } = useConfigs(server.id)
+  const { data: template } = useTemplate(server.template_id)
   // "console", "files" or "config:<id>" (prefixed, so a config can't be called "files").
   const [tab, setTab] = useState('console')
 
@@ -101,7 +103,11 @@ function InstalledTabs({ server }: { server: Server }) {
       />
       {tab === 'console' ? (
         <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
-          <Console serverId={server.id} running={server.status === 'running' || server.status === 'starting'} />
+          <Console
+            serverId={server.id}
+            running={server.status === 'running' || server.status === 'starting'}
+            consoleSpec={template?.console}
+          />
         </Suspense>
       ) : tab === 'files' ? (
         <FileBrowser serverId={server.id} />

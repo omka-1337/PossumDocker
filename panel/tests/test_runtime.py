@@ -103,3 +103,67 @@ def test_same_number_different_protocol_is_fine():
 )
 def test_health_from_status(text, health):
     assert _health_from_status(text) == health
+
+
+def load_template(name: str) -> Template:
+    import yaml
+
+    return Template.model_validate(yaml.safe_load((TEMPLATES_DIR / f"{name}.yaml").read_text()))
+
+
+@pytest.mark.parametrize(("vac", "insecure"), [(True, False), (False, True)])
+def test_cs16_vac_switch_adds_insecure_only_when_off(vac, insecure):
+    server = Server(
+        id="s1",
+        name="x",
+        template_id="cs16",
+        values={"map": "de_dust2", "max_players": 10, "vac": vac, "rcon_password": "pw"},
+        ports={"game": 27015},
+    )
+    command = build_spec(load_template("cs16"), server, TEMPLATES_DIR).runtime.command
+    assert ("-insecure" in command) is insecure
+    assert "" not in command  # the optional flag leaves no empty argument behind
+
+
+def colour_of(template: Template, lines: list[str]) -> list[str | None]:
+    """The same logic the browser console runs, to check the template's patterns on real lines."""
+    import re
+
+    colours, previous = [], None
+    for line in lines:
+        if template.console.continuation and re.search(template.console.continuation, line):
+            colour = previous
+        else:
+            colour = next((r.color for r in template.console.highlight if re.search(r.pattern, line)), None)
+        colours.append(colour)
+        previous = colour
+    return colours
+
+
+def test_minecraft_console_colours():
+    lines = [
+        '[23:09:55 INFO]: Done (34.170s)! For help, type "help"',
+        "[23:10:01 WARN]: Can't keep up! Is the server overloaded?",
+        "[23:02:28] [Server thread/WARN]: Ambiguity between arguments",
+        "[23:10:02 ERROR]: Could not load 'plugins/Broken.jar'",
+        "java.lang.IllegalStateException: boom",
+        "\tat org.bukkit.plugin.SimplePluginManager.loadPlugin(SimplePluginManager.java:123)",
+        "\t... 5 more",
+        "[23:02:30] [Server thread/ERROR]: Encountered an unexpected exception",
+        "Starting org.bukkit.craftbukkit.Main",
+        "[init] Setting initial memory to 1024M",
+        "WARN StatusConsoleListener Advanced terminal features are not available",
+    ]
+    assert colour_of(load_template("minecraft-java"), lines) == [
+        None, "yellow", "yellow", "red", "red", "red", "red", "red", None, "gray", "yellow",
+    ]  # fmt: skip
+
+
+def test_invalid_highlight_pattern_is_rejected():
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="invalid pattern"):
+        Template.model_validate(
+            {"id": "t", "name": "T", "runtime": {"image": "a"},
+             "console": {"highlight": [{"pattern": "([", "color": "red"}]}}
+        )  # fmt: skip

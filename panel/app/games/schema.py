@@ -1,5 +1,6 @@
 """Pydantic models describing a game template (templates/*.yaml)."""
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -137,6 +138,37 @@ class InstallSpec(StrictModel):
         return self
 
 
+class HighlightRule(StrictModel):
+    # Matched against each console line in the browser (JavaScript regex syntax; keep it simple).
+    pattern: str
+    color: Literal["red", "yellow", "green", "blue", "magenta", "cyan", "gray"]
+
+    @field_validator("pattern")
+    @classmethod
+    def _compiles(cls, pattern: str) -> str:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(f"invalid pattern {pattern!r}: {exc}") from exc
+        return pattern
+
+
+class ConsoleSpec(StrictModel):
+    """How the panel's console shows this game's output."""
+
+    # First matching rule colours the whole line. Lines the game already coloured are left alone.
+    highlight: list[HighlightRule] = []
+    # Lines that continue the previous record (a Java stack trace under an ERROR) and keep its colour.
+    continuation: str | None = None
+
+    @field_validator("continuation")
+    @classmethod
+    def _continuation_compiles(cls, pattern: str | None) -> str | None:
+        if pattern is not None:
+            HighlightRule._compiles(pattern)
+        return pattern
+
+
 class ConfigHint(StrictModel):
     """How to present one key of a config file. Keys without a hint are shown as plain text."""
 
@@ -196,6 +228,7 @@ class Template(StrictModel):
     install: InstallSpec | None = None
     runtime: RuntimeSpec
     config_files: list[ConfigFile] = []
+    console: ConsoleSpec = ConsoleSpec()
     query: dict[str, Any] | None = None
 
     def config_file(self, config_id: str) -> ConfigFile | None:

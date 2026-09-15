@@ -23,6 +23,14 @@ fields:
     editable: true
     on_change: restart
 
+  - id: vac
+    label: Valve Anti-Cheat (VAC)
+    type: boolean
+    default: true
+    help: Turn off for LAN parties or non-Steam clients. The server is then listed as insecure.
+    editable: true
+    on_change: restart
+
   - id: rcon_password
     label: RCON password
     type: secret
@@ -53,6 +61,8 @@ runtime:
     - "{{ max_players }}"
     - +rcon_password
     - "{{ rcon_password }}"
+    # An empty item is dropped, so this adds -insecure only when VAC is off.
+    - "{{ '' if vac else '-insecure' }}"
   stop:
     command: quit
     timeout: 15

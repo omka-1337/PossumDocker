@@ -77,9 +77,19 @@ export interface TemplateSummary {
   color: string | null
 }
 
+export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'magenta' | 'cyan' | 'gray'
+
+export interface ConsoleSpec {
+  // First matching rule colours the whole line
+  highlight: { pattern: string; color: HighlightColor }[]
+  // Lines continuing the previous record (stack traces) keep its colour
+  continuation: string | null
+}
+
 export interface TemplateDetail extends TemplateSummary {
   fields: TemplateField[]
   ports: Port[]
+  console: ConsoleSpec
 }
 
 export type ServerStatus =

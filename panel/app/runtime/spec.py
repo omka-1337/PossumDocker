@@ -74,7 +74,11 @@ def _render_env(env: dict[str, str], context: dict) -> dict[str, str]:
 
 def _render_list(items: list[str] | None, context: dict) -> list[str] | None:
     # Each item stays one argument: user input is never split or passed through a shell.
-    return None if items is None else [_render(item, context) for item in items]
+    # An item that renders empty is dropped, so optional flags work: "{{ '' if vac else '-insecure' }}"
+    if items is None:
+        return None
+    rendered = (_render(item, context) for item in items)
+    return [arg for arg in rendered if arg != ""]
 
 
 def build_spec(template: Template, server: Server, templates_dir: Path) -> ServerSpec:

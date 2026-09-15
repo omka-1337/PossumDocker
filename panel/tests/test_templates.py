@@ -118,3 +118,9 @@ def test_steam_art_endpoints(client, tmp_path):
     minecraft = client.get("/api/templates/minecraft-java").json()
     assert minecraft["steam_icon_url"] is None and minecraft["cover_url"] is None
     assert client.get("/api/templates/minecraft-java/steam/header").status_code == 404
+
+
+def test_console_rules_reach_the_ui(client):
+    console = client.get("/api/templates/minecraft-java").json()["console"]
+    assert {rule["color"] for rule in console["highlight"]} >= {"red", "yellow"}
+    assert console["continuation"]

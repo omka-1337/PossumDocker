@@ -2,6 +2,8 @@ import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import type { ConsoleSpec } from '../api/types'
+import { createHighlighter } from '../lib/highlight'
 
 const RECONNECT_MS = 2000
 const HISTORY_SIZE = 50
@@ -11,17 +13,27 @@ type ServerMessage = { type: 'log' | 'error'; data: string }
 interface Props {
   serverId: string
   running: boolean
+  // The game template's colouring rules (WARN yellow, ERROR red...).
+  consoleSpec?: ConsoleSpec
 }
 
 /**
  * Live server console: output rendered by xterm.js (keeps the game's colours),
  * commands typed into a separate input with ↑/↓ history.
  */
-export function Console({ serverId, running }: Props) {
+export function Console({ serverId, running, consoleSpec }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
+  // Refs, so the socket effect doesn't reconnect when the template finishes loading.
+  const specRef = useRef(consoleSpec)
+  const highlightRef = useRef(createHighlighter(consoleSpec))
+
+  useEffect(() => {
+    specRef.current = consoleSpec
+    highlightRef.current = createHighlighter(consoleSpec)
+  }, [consoleSpec])
 
   // Terminal: created once per mount, resized with its container.
   useEffect(() => {
@@ -32,7 +44,19 @@ export function Console({ serverId, running }: Props) {
       fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
       fontSize: 13,
       cursorInactiveStyle: 'none',
-      theme: { background: '#101010', foreground: '#d4d4d8', selectionBackground: '#3f3f46' },
+      theme: {
+        background: '#101010',
+        foreground: '#d4d4d8',
+        selectionBackground: '#3f3f46',
+        // Softer than the xterm defaults on a near-black background.
+        red: '#f87171',
+        yellow: '#facc15',
+        green: '#4ade80',
+        blue: '#60a5fa',
+        magenta: '#e879f9',
+        cyan: '#22d3ee',
+        brightBlack: '#71717a',
+      },
     })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
@@ -63,10 +87,11 @@ export function Console({ serverId, running }: Props) {
         setConnected(true)
         // The server replays recent history on every connect.
         terminalRef.current?.reset()
+        highlightRef.current = createHighlighter(specRef.current)
       }
       socket.onmessage = (event) => {
         const message = JSON.parse(event.data) as ServerMessage
-        if (message.type === 'log') terminalRef.current?.writeln(message.data)
+        if (message.type === 'log') terminalRef.current?.writeln(highlightRef.current(message.data))
         else terminalRef.current?.writeln(`\x1b[31m${message.data}\x1b[0m`)
       }
       socket.onclose = () => {

@@ -100,5 +100,14 @@ config_files:
       simulation-distance: { label: Simulation distance, type: number, min: 3, max: 32 }
       level-seed: { label: World seed, help: Only used when a new world is generated. }
 
+console:
+  # Paper: "[12:00:00 WARN]: ...", vanilla/Fabric: "[12:00:00] [Server thread/WARN]: ..."
+  highlight:
+    - { pattern: '^(\[[^\]]*\] )?\[[^\]]*[ /](ERROR|FATAL|SEVERE)\]', color: red }
+    - { pattern: '^(\[[^\]]*\] )?\[[^\]]*[ /]WARN(ING)?\]', color: yellow }
+    - { pattern: '^(WARN |\*\*\* Warning)', color: yellow }
+    - { pattern: '^\[init\]|\tmc-server-runner\t', color: gray }
+  continuation: '^(\s+at |\s*\.\.\. \d+ more|Caused by: |[\w.$]+(Exception|Error)(: |$))'
+
 query:
   protocol: minecraft

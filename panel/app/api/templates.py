@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.api.deps import Providers, Templates, require_template
 from app.games.providers import ProviderError
 from app.games.registry import icon_path
-from app.games.schema import Option, Port, SecretField, SelectField, Template, TemplateField
+from app.games.schema import ConsoleSpec, Option, Port, SecretField, SelectField, Template, TemplateField
 from app.games.steam import SteamAssets
 from app.games.validation import dependency_params
 
@@ -32,6 +32,7 @@ class TemplateDetail(TemplateSummary):
 
     fields: list[TemplateField]
     ports: list[Port]
+    console: ConsoleSpec
 
 
 def summary(template: Template) -> dict:
@@ -57,7 +58,7 @@ async def list_templates(templates: Templates) -> list[TemplateSummary]:
 async def get_template(template_id: str, templates: Templates) -> TemplateDetail:
     template = require_template(templates, template_id)
     fields = [f for f in template.fields if not (isinstance(f, SecretField) and f.hidden)]
-    return TemplateDetail(**summary(template), fields=fields, ports=template.ports)
+    return TemplateDetail(**summary(template), fields=fields, ports=template.ports, console=template.console)
 
 
 @router.get("/{template_id}/icon")

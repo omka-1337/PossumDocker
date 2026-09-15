@@ -33,16 +33,23 @@ function parseError(status: number, body: unknown): ApiError {
   return new ApiError(status, typeof detail === 'string' ? detail : `Request failed (${status})`)
 }
 
+// The panel refuses state changes without this header: other sites can't add it (CSRF).
+export const CSRF_HEADERS = { 'X-Requested-With': 'dgs' }
+
+/** Fired when the session is gone (logged out elsewhere, expired): the app shows the login page. */
+export const UNAUTHORIZED_EVENT = 'dgs:unauthorized'
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(`/api${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: { 'Content-Type': 'application/json', ...CSRF_HEADERS, ...init?.headers },
   })
   if (resp.status === 204) {
     return undefined as T
   }
   const body = await resp.json().catch(() => null)
   if (!resp.ok) {
+    if (resp.status === 401 && path !== '/auth/login') window.dispatchEvent(new Event(UNAUTHORIZED_EVENT))
     throw parseError(resp.status, body)
   }
   return body as T

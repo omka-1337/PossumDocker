@@ -17,7 +17,9 @@ import {
   useTemplates,
   type ServerAction,
 } from '../api/queries'
+import { useMe, useServerPermissions, type Permission } from '../api/auth'
 import type { Server } from '../api/types'
+import { AccessTab } from '../components/AccessTab'
 import { BackupsTab } from '../components/BackupsTab'
 import { FileBrowser } from '../components/files/FileBrowser'
 import { GameIcon } from '../components/GameIcon'
@@ -48,6 +50,9 @@ export function ServerPage() {
 }
 
 function ServerView({ server }: { server: Server }) {
+  const { data: me } = useMe()
+  const { data: permissions = [] } = useServerPermissions(server.id)
+  const isAdmin = me?.is_admin ?? false
   const { data: templates } = useTemplates()
   const template = templates?.find((t) => t.id === server.template_id)
   const game = template?.name ?? server.template_id
@@ -68,7 +73,7 @@ function ServerView({ server }: { server: Server }) {
         <StatusBadge status={server.status} />
       </div>
 
-      <Actions server={server} />
+      <Actions server={server} canControl={permissions.includes('control')} isAdmin={isAdmin} />
       <Address server={server} />
 
       {server.status_message && (
@@ -77,45 +82,54 @@ function ServerView({ server }: { server: Server }) {
       {installing ? (
         <InstallLog serverId={server.id} live={server.status === 'installing'} />
       ) : (
-        server.status !== 'pending' && <InstalledTabs server={server} />
+        server.status !== 'pending' && <InstalledTabs server={server} permissions={permissions} isAdmin={isAdmin} />
       )}
 
-      <DangerZone server={server} />
+      {isAdmin && <DangerZone server={server} />}
     </div>
   )
 }
 
-function InstalledTabs({ server }: { server: Server }) {
+type TabId = 'console' | 'files' | 'backups' | 'schedules' | 'settings' | 'access'
+
+function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permissions: Permission[]; isAdmin: boolean }) {
   const { data: template } = useTemplate(server.template_id)
-  const [tab, setTab] = useState<'console' | 'files' | 'backups' | 'schedules' | 'settings'>('console')
+  const [chosen, setTab] = useState<TabId>('console')
+  const can = (p: Permission) => permissions.includes(p)
+
+  // Only the parts this user may use.
+  const tabs = (
+    [
+      { value: 'console', label: 'console', shown: true },
+      { value: 'files', label: 'files', shown: can('files') },
+      { value: 'backups', label: 'backups', shown: can('backups') || can('restore') },
+      { value: 'schedules', label: 'schedules', shown: can('schedules') },
+      { value: 'settings', label: 'settings', shown: can('settings') },
+      { value: 'access', label: 'access', shown: isAdmin },
+    ] as const
+  ).filter((t) => t.shown)
+  const tab = tabs.some((t) => t.value === chosen) ? chosen : 'console'
 
   return (
     <>
-      <Tabs
-        tabs={[
-          { value: 'console', label: 'console' },
-          { value: 'files', label: 'files' },
-          { value: 'backups', label: 'backups' },
-          { value: 'schedules', label: 'schedules' },
-          { value: 'settings', label: 'settings' },
-        ]}
-        value={tab}
-        onChange={setTab}
-      />
+      <Tabs tabs={tabs.map(({ value, label }) => ({ value, label }))} value={tab} onChange={setTab} />
       {tab === 'console' ? (
         <Suspense fallback={<p className="mb-6 text-sm text-muted">loading console…</p>}>
           <Console
             serverId={server.id}
             running={server.status === 'running' || server.status === 'starting'}
             consoleSpec={template?.console}
+            canSend={can('console')}
           />
         </Suspense>
       ) : tab === 'files' ? (
         <FileBrowser serverId={server.id} />
       ) : tab === 'backups' ? (
-        <BackupsTab server={server} />
+        <BackupsTab server={server} canBackup={can('backups')} canRestore={can('restore')} />
       ) : tab === 'schedules' ? (
         <SchedulesTab server={server} />
+      ) : tab === 'access' ? (
+        <AccessTab serverId={server.id} />
       ) : (
         <SettingsTab server={server} />
       )}
@@ -123,12 +137,15 @@ function InstalledTabs({ server }: { server: Server }) {
   )
 }
 
-function Actions({ server }: { server: Server }) {
+function Actions({ server, canControl, isAdmin }: { server: Server; canControl: boolean; isAdmin: boolean }) {
   const action = useServerAction(server.id)
   const run = (a: ServerAction) => action.mutate(a)
   const { status } = server
   const busy =
     action.isPending || status === 'starting' || status === 'stopping' || status === 'installing' || status === 'restoring'
+
+  // Nothing to press: a failed install can only be retried by an administrator.
+  if (!canControl && !(isAdmin && status === 'install_failed')) return null
 
   return (
     <div className="mb-4">
@@ -143,9 +160,11 @@ function Actions({ server }: { server: Server }) {
             </Button>
           </>
         ) : status === 'install_failed' ? (
+          isAdmin && (
           <Button variant="primary" onClick={() => run('reinstall')} disabled={busy}>
             <IconRefresh size={16} /> reinstall
           </Button>
+          )
         ) : (
           <Button variant="primary" onClick={() => run('start')} disabled={busy || status !== 'stopped'}>
             <IconPlayerPlay size={16} /> start

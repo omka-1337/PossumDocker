@@ -1,10 +1,13 @@
 import asyncio
 import logging
+from urllib.parse import urlsplit
 
 from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.auth import COOKIE, server_permissions, user_for_token
+from app.core.permissions import Permission
 from app.models import Server
 from app.runtime.console import follow_console
 from app.runtime.manager import ServerBusy, ServerManager, ServerStatus
@@ -19,16 +22,28 @@ class ClientMessage(BaseModel):
     data: str = Field(max_length=1000)
 
 
-# TODO: authenticate before accepting: this socket runs commands on the game server.
 @router.websocket("/servers/{server_id}/console")
 async def console(websocket: WebSocket, server_id: str) -> None:
     """Server → client: {"type": "log", "data": line} | {"type": "error", "data": message}
     Client → server: {"type": "command", "data": "say hi"}
+
+    Needs the session cookie and the 'view' permission; commands also need 'console'.
     """
+    if not _same_origin(websocket):
+        # Browsers send cookies with WebSockets from any site: without this check another page
+        # could open the console as the logged-in user.
+        await websocket.close(code=4403, reason="cross-site connection refused")
+        return
+
     manager: ServerManager = websocket.app.state.manager
     async with websocket.app.state.sessionmaker() as session:
+        found = await user_for_token(session, websocket.cookies.get(COOKIE))
+        if found is None:
+            await websocket.close(code=4401, reason="log in first")
+            return
+        permissions = await server_permissions(session, found[0], server_id)
         server = await session.get(Server, server_id)
-    if server is None:
+    if server is None or not permissions:
         await websocket.close(code=4404, reason="server not found")
         return
 
@@ -41,13 +56,24 @@ async def console(websocket: WebSocket, server_id: str) -> None:
             except (ValidationError, ValueError):
                 await websocket.send_json({"type": "error", "data": "invalid message"})
                 continue
-            if message.type == "command" and message.data.strip():
-                await _run_command(websocket, manager, server, message.data)
+            if message.type != "command" or not message.data.strip():
+                continue
+            if Permission.CONSOLE not in permissions:
+                await websocket.send_json({"type": "error", "data": "you can't send commands to this server"})
+                continue
+            await _run_command(websocket, manager, server, message.data)
     except WebSocketDisconnect:
         pass
     finally:
         pump.cancel()
         await asyncio.gather(pump, return_exceptions=True)
+
+
+def _same_origin(websocket: WebSocket) -> bool:
+    origin = websocket.headers.get("origin")
+    if origin is None:
+        return True  # not a browser (CLI tools, tests): no cookies to abuse
+    return urlsplit(origin).netloc == websocket.headers.get("host")
 
 
 async def _pump_logs(websocket: WebSocket, manager: ServerManager, server_id: str) -> None:

@@ -2,11 +2,13 @@ from datetime import datetime
 from typing import Any
 
 from aiodocker.exceptions import DockerError
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from app.api.deps import Manager, Providers, Session, Templates, require_template
+from app.core.auth import CurrentUser, allow, require_admin, visible_server_ids
+from app.core.permissions import Permission
 from app.games.validation import ValuesError, public_values, validate_values
 from app.models import Server
 from app.runtime.docker import RuntimeUnavailable
@@ -14,6 +16,7 @@ from app.runtime.manager import ServerBusy, ServerStatus
 from app.runtime.ports import allocate_ports
 
 router = APIRouter(prefix="/servers", tags=["servers"])
+AdminOnly = Depends(require_admin)
 
 
 class ServerCreate(BaseModel):
@@ -76,13 +79,18 @@ async def read_one(server: Server, templates: Templates, manager: Manager) -> Se
 
 
 @router.get("")
-async def list_servers(session: Session, templates: Templates, manager: Manager) -> list[ServerRead]:
-    servers = list(await session.scalars(select(Server).order_by(Server.created_at)))
+async def list_servers(
+    session: Session, templates: Templates, manager: Manager, user: CurrentUser
+) -> list[ServerRead]:
+    query = select(Server).order_by(Server.created_at)
+    if (visible := await visible_server_ids(session, user)) is not None:
+        query = query.where(Server.id.in_(visible))  # only servers they were given access to
+    servers = list(await session.scalars(query))
     statuses = await manager.statuses(servers)
     return [to_read(s, templates, statuses[s.id]) for s in servers]
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[AdminOnly])
 async def create_server(
     body: ServerCreate, session: Session, templates: Templates, providers: Providers, manager: Manager
 ) -> ServerRead:
@@ -121,12 +129,12 @@ async def create_server(
     return await read_one(server, templates, manager)
 
 
-@router.get("/{server_id}")
+@router.get("/{server_id}", dependencies=[allow(Permission.VIEW)])
 async def get_server(server_id: str, session: Session, templates: Templates, manager: Manager) -> ServerRead:
     return await read_one(await get_server_or_404(session, server_id), templates, manager)
 
 
-@router.patch("/{server_id}")
+@router.patch("/{server_id}", dependencies=[allow(Permission.SETTINGS)])
 async def update_server(
     server_id: str,
     body: ServerUpdate,
@@ -180,7 +188,7 @@ async def update_server(
     )
 
 
-@router.get("/{server_id}/install-log")
+@router.get("/{server_id}/install-log", dependencies=[allow(Permission.VIEW)])
 async def get_install_log(server_id: str, session: Session, manager: Manager) -> list[str]:
     await get_server_or_404(session, server_id)
     return manager.install_log(server_id)
@@ -195,7 +203,7 @@ async def _run(action, server: Server) -> None:
         raise HTTPException(503, f"docker: {exc}") from exc
 
 
-@router.post("/{server_id}/start")
+@router.post("/{server_id}/start", dependencies=[allow(Permission.CONTROL)])
 async def start_server(
     server_id: str, session: Session, templates: Templates, manager: Manager
 ) -> ServerRead:
@@ -204,14 +212,14 @@ async def start_server(
     return await read_one(server, templates, manager)
 
 
-@router.post("/{server_id}/stop")
+@router.post("/{server_id}/stop", dependencies=[allow(Permission.CONTROL)])
 async def stop_server(server_id: str, session: Session, templates: Templates, manager: Manager) -> ServerRead:
     server = await get_server_or_404(session, server_id)
     await _run(manager.stop, server)
     return await read_one(server, templates, manager)
 
 
-@router.post("/{server_id}/restart")
+@router.post("/{server_id}/restart", dependencies=[allow(Permission.CONTROL)])
 async def restart_server(
     server_id: str, session: Session, templates: Templates, manager: Manager
 ) -> ServerRead:
@@ -220,7 +228,7 @@ async def restart_server(
     return await read_one(server, templates, manager)
 
 
-@router.post("/{server_id}/reinstall")
+@router.post("/{server_id}/reinstall", dependencies=[AdminOnly])
 async def reinstall_server(
     server_id: str, session: Session, templates: Templates, manager: Manager
 ) -> ServerRead:
@@ -233,7 +241,9 @@ async def reinstall_server(
     return await read_one(server, templates, manager)
 
 
-@router.post("/{server_id}/command", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{server_id}/command", status_code=status.HTTP_204_NO_CONTENT, dependencies=[allow(Permission.CONSOLE)]
+)
 async def send_command(server_id: str, body: CommandBody, session: Session, manager: Manager) -> None:
     server = await get_server_or_404(session, server_id)
     if await manager.status_of(server) not in (ServerStatus.RUNNING, ServerStatus.STARTING):
@@ -246,7 +256,7 @@ async def send_command(server_id: str, body: CommandBody, session: Session, mana
         raise HTTPException(503, f"docker: {exc}") from exc
 
 
-@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{server_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[AdminOnly])
 async def delete_server(server_id: str, session: Session, manager: Manager) -> None:
     server = await get_server_or_404(session, server_id)
     try:

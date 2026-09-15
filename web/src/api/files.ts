@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError } from './client'
+import { api, ApiError, CSRF_HEADERS } from './client'
 
 // Mirrors panel/app/api/files.py. Paths are relative to the server's data volume, '' is the root.
 
@@ -100,6 +100,7 @@ export function uploadFiles(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `/api${base(serverId)}/upload`)
+    xhr.setRequestHeader('X-Requested-With', CSRF_HEADERS['X-Requested-With'])
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded, e.total)
     xhr.onload = () => {
       if (xhr.status < 300) return resolve()

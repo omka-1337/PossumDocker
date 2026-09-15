@@ -99,15 +99,44 @@ def runtime(tmp_path) -> FakeRuntime:
     return FakeRuntime(files_root=tmp_path / "volumes")
 
 
+ADMIN_PASSWORD = "admin-password"
+
+
 @pytest.fixture
 def client(tmp_path, providers, runtime) -> TestClient:
+    """Logged in as an administrator. Use `login()` to act as someone else."""
     settings = Settings(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
         cache_dir=tmp_path / "cache",
         backups_dir=tmp_path / "backups",
     )
-    with TestClient(create_app(settings, providers, runtime)) as test_client:
+    # Like the web UI: every request carries the CSRF header.
+    with TestClient(
+        create_app(settings, providers, runtime), headers={"X-Requested-With": "dgs"}
+    ) as test_client:
+        add_user(test_client, "admin", ADMIN_PASSWORD, is_admin=True)
+        login(test_client, "admin", ADMIN_PASSWORD)
         yield test_client
+
+
+def add_user(client: TestClient, username: str, password: str, is_admin: bool = False) -> str:
+    from app.core.security import hash_password
+    from app.models import User
+
+    async def create():
+        async with client.app.state.sessionmaker() as session:
+            user = User(username=username, password_hash=hash_password(password), is_admin=is_admin)
+            session.add(user)
+            await session.commit()
+            return user.id
+
+    return client.portal.call(create)
+
+
+def login(client: TestClient, username: str, password: str) -> None:
+    client.cookies.clear()
+    resp = client.post("/api/auth/login", json={"username": username, "password": password})
+    assert resp.status_code == 200, resp.text
 
 
 @pytest.fixture(autouse=True)

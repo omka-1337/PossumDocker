@@ -10,11 +10,15 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import Manager, Session
 from app.api.servers import get_server_or_404
+from app.core.auth import allow
+from app.core.permissions import Permission
 from app.models import ServerState
 from app.runtime.docker import RuntimeUnavailable
 from app.runtime.files import FileEntry, FileError, Upload, resolve
 
-router = APIRouter(prefix="/servers/{server_id}/files", tags=["files"])
+router = APIRouter(
+    prefix="/servers/{server_id}/files", tags=["files"], dependencies=[allow(Permission.FILES)]
+)
 
 
 class Listing(BaseModel):

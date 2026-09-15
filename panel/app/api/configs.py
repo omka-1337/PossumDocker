@@ -4,12 +4,16 @@ from pydantic import BaseModel
 
 from app.api.deps import Manager, Session, Templates
 from app.api.servers import get_server_or_404
+from app.core.auth import allow
+from app.core.permissions import Permission
 from app.games.configs import ConfigDocument, ConfigValuesError, validate_config_values
 from app.games.schema import ConfigFile, ConfigHint
 from app.runtime.docker import RuntimeUnavailable
 from app.runtime.manager import ServerBusy
 
-router = APIRouter(prefix="/servers/{server_id}/configs", tags=["configs"])
+router = APIRouter(
+    prefix="/servers/{server_id}/configs", tags=["configs"], dependencies=[allow(Permission.SETTINGS)]
+)
 
 
 class ConfigSummary(BaseModel):

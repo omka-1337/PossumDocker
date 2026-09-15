@@ -10,6 +10,8 @@ from sqlalchemy import select
 
 from app.api.deps import Manager, Session
 from app.api.servers import get_server_or_404
+from app.core.auth import allow
+from app.core.permissions import Permission
 from app.models import Backup, BackupStatus
 from app.runtime.docker import RuntimeUnavailable
 from app.runtime.manager import ServerBusy
@@ -58,7 +60,7 @@ def _conflict(exc: Exception) -> HTTPException:
     return HTTPException(503, f"docker: {exc}")
 
 
-@router.get("")
+@router.get("", dependencies=[allow(Permission.BACKUPS, Permission.RESTORE)])
 async def list_backups(server_id: str, session: Session, manager: Manager) -> BackupList:
     await get_server_or_404(session, server_id)
     backups = (
@@ -73,7 +75,7 @@ async def list_backups(server_id: str, session: Session, manager: Manager) -> Ba
     )
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", status_code=status.HTTP_202_ACCEPTED, dependencies=[allow(Permission.BACKUPS)])
 async def create_backup(server_id: str, body: BackupCreate, session: Session, manager: Manager) -> BackupRead:
     """Starts the backup; it shows up as `creating` and turns `ready` or `failed`."""
     server = await get_server_or_404(session, server_id)
@@ -84,7 +86,9 @@ async def create_backup(server_id: str, body: BackupCreate, session: Session, ma
         raise _conflict(exc) from exc
 
 
-@router.post("/{backup_id}/restore", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{backup_id}/restore", status_code=status.HTTP_202_ACCEPTED, dependencies=[allow(Permission.RESTORE)]
+)
 async def restore_backup(server_id: str, backup_id: str, session: Session, manager: Manager) -> None:
     """Replaces the server's files with the backup. The server must be stopped; it shows `restoring`."""
     server = await get_server_or_404(session, server_id)
@@ -97,7 +101,7 @@ async def restore_backup(server_id: str, backup_id: str, session: Session, manag
         raise _conflict(exc) from exc
 
 
-@router.get("/{backup_id}/download")
+@router.get("/{backup_id}/download", dependencies=[allow(Permission.BACKUPS)])
 async def download_backup(server_id: str, backup_id: str, session: Session, manager: Manager) -> FileResponse:
     server = await get_server_or_404(session, server_id)
     backup = await get_backup_or_404(session, server_id, backup_id)
@@ -109,7 +113,9 @@ async def download_backup(server_id: str, backup_id: str, session: Session, mana
     return FileResponse(path, media_type="application/gzip", filename=f"{safe_name}-{stamp}.tar.gz")
 
 
-@router.delete("/{backup_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{backup_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[allow(Permission.BACKUPS)]
+)
 async def delete_backup(server_id: str, backup_id: str, session: Session, manager: Manager) -> None:
     backup = await get_backup_or_404(session, server_id, backup_id)
     try:

@@ -15,13 +15,15 @@ interface Props {
   running: boolean
   // The game template's colouring rules (WARN yellow, ERROR red...).
   consoleSpec?: ConsoleSpec
+  // The user has the "console" permission.
+  canSend: boolean
 }
 
 /**
  * Live server console: output rendered by xterm.js (keeps the game's colours),
  * commands typed into a separate input with ↑/↓ history.
  */
-export function Console({ serverId, running, consoleSpec }: Props) {
+export function Console({ serverId, running, consoleSpec, canSend }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
@@ -128,8 +130,10 @@ export function Console({ serverId, running, consoleSpec }: Props) {
         <div className="p-3">
           <div ref={containerRef} className="h-80" />
         </div>
-        {consoleSpec?.commands === false ? (
-          <p className="border-t border-line-soft px-3 py-2.5 text-sm text-muted">this game has no console commands</p>
+        {consoleSpec?.commands === false || !canSend ? (
+          <p className="border-t border-line-soft px-3 py-2.5 text-sm text-muted">
+            {canSend ? 'this game has no console commands' : "you can watch the console but not send commands"}
+          </p>
         ) : (
           <CommandInput disabled={!connected || !running} running={running} onSend={send} />
         )}

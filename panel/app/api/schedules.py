@@ -7,11 +7,15 @@ from sqlalchemy import select
 
 from app.api.deps import Session
 from app.api.servers import get_server_or_404
+from app.core.auth import allow
+from app.core.permissions import Permission
 from app.games.schema import Template
 from app.models import Schedule, ScheduleAction
 from app.runtime.scheduler import Scheduler, describe, next_run, validate_cron
 
-router = APIRouter(prefix="/servers/{server_id}/schedules", tags=["schedules"])
+router = APIRouter(
+    prefix="/servers/{server_id}/schedules", tags=["schedules"], dependencies=[allow(Permission.SCHEDULES)]
+)
 
 
 class ScheduleWrite(BaseModel):

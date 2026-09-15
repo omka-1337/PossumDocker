@@ -1,6 +1,7 @@
 import { IconChevronRight, IconPlus } from '@tabler/icons-react'
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { useMe } from '../api/auth'
 import { useServers, useTemplates } from '../api/queries'
 import type { Server } from '../api/types'
 import { CreateServerDialog } from '../components/CreateServerDialog'
@@ -10,19 +11,24 @@ import { Button, StatusBadge } from '../components/ui'
 export function ServersPage() {
   const [creating, setCreating] = useState(false)
   const { data: servers, isPending, isError } = useServers()
+  const { data: me } = useMe()
+  const isAdmin = me?.is_admin ?? false
   const navigate = useNavigate()
 
   return (
     <div className="flex min-h-full flex-col px-4 py-5">
-      <button
-        onClick={() => setCreating(true)}
-        className="group mx-auto flex items-center gap-2.5 rounded-full py-1 pr-3 pl-1 text-sm transition hover:bg-panel"
-      >
-        <span className="grid size-7 place-items-center rounded-full bg-raised transition group-hover:bg-raised-hover">
-          <IconPlus size={16} />
-        </span>
-        new server
-      </button>
+      {/* Only administrators create servers. */}
+      {isAdmin && (
+        <button
+          onClick={() => setCreating(true)}
+          className="group mx-auto flex items-center gap-2.5 rounded-full py-1 pr-3 pl-1 text-sm transition hover:bg-panel"
+        >
+          <span className="grid size-7 place-items-center rounded-full bg-raised transition group-hover:bg-raised-hover">
+            <IconPlus size={16} />
+          </span>
+          new server
+        </button>
+      )}
 
       {isPending ? (
         <Centered>
@@ -37,11 +43,20 @@ export function ServersPage() {
           <div className="mb-6 text-7xl font-semibold tracking-tighter text-zinc-700 select-none" aria-hidden>
             &gt;_
           </div>
-          <p className="text-zinc-200">no servers yet</p>
-          <p className="mt-1 mb-6 text-sm text-muted">pick a game, set it up, press start.</p>
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <IconPlus size={16} /> create a server
-          </Button>
+          {isAdmin ? (
+            <>
+              <p className="text-zinc-200">no servers yet</p>
+              <p className="mt-1 mb-6 text-sm text-muted">pick a game, set it up, press start.</p>
+              <Button variant="primary" onClick={() => setCreating(true)}>
+                <IconPlus size={16} /> create a server
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-zinc-200">no servers shared with you</p>
+              <p className="mt-1 text-sm text-muted">ask an administrator to give you access to one.</p>
+            </>
+          )}
         </Centered>
       ) : (
         <ul className="mx-auto mt-10 w-full max-w-2xl space-y-2">

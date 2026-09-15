@@ -14,7 +14,7 @@ import { formatDate, formatSize } from '../lib/format'
 import { inputClass } from './FieldInput'
 import { Button, IconButton, Modal } from './ui'
 
-export function BackupsTab({ server }: { server: Server }) {
+export function BackupsTab({ server, canBackup, canRestore }: { server: Server; canBackup: boolean; canRestore: boolean }) {
   const { data, isPending, isError, error } = useBackups(server.id, server.status === 'restoring')
   const actions = useBackupActions(server.id)
   const [creating, setCreating] = useState(false)
@@ -33,9 +33,11 @@ export function BackupsTab({ server }: { server: Server }) {
         <p className="flex-1 text-sm text-muted">
           {backups.length} {backups.length === 1 ? 'backup' : 'backups'} · {formatSize(totalSize)}
         </p>
-        <Button variant="primary" onClick={() => setCreating(true)}>
-          <IconPlus size={16} /> back up now
-        </Button>
+        {canBackup && (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <IconPlus size={16} /> back up now
+          </Button>
+        )}
       </div>
 
       {server.status === 'restoring' && (
@@ -63,8 +65,9 @@ export function BackupsTab({ server }: { server: Server }) {
               key={backup.id}
               serverId={server.id}
               backup={backup}
-              onRestore={() => setRestoring(backup)}
-              onDelete={() => setDeleting(backup)}
+              onRestore={canRestore ? () => setRestoring(backup) : undefined}
+              onDelete={canBackup ? () => setDeleting(backup) : undefined}
+              canDownload={canBackup}
             />
           ))}
         </ul>
@@ -138,11 +141,14 @@ function BackupRow({
   backup,
   onRestore,
   onDelete,
+  canDownload,
 }: {
   serverId: string
   backup: Backup
-  onRestore: () => void
-  onDelete: () => void
+  // Missing: the user isn't allowed to.
+  onRestore?: () => void
+  onDelete?: () => void
+  canDownload: boolean
 }) {
   const title = backup.note ?? (backup.schedule_id ? 'scheduled backup' : 'manual backup')
   const contents = backup.paths ? `${backup.paths.length} ${backup.paths.length === 1 ? 'path' : 'paths'}` : 'whole server'
@@ -167,22 +173,22 @@ function BackupRow({
         </div>
         {backup.status === 'failed' && <div className="text-xs text-red-400">failed: {backup.message}</div>}
       </div>
-      {backup.status === 'ready' && (
-        <>
-          <a
-            href={`/api/servers/${serverId}/backups/${backup.id}/download`}
-            className="grid size-8 place-items-center rounded-full text-zinc-400 transition hover:bg-raised hover:text-zinc-100"
-            aria-label="download"
-            title="download"
-          >
-            <IconDownload size={18} />
-          </a>
-          <IconButton onClick={onRestore} aria-label="restore" title="restore">
-            <IconHistory size={18} />
-          </IconButton>
-        </>
+      {backup.status === 'ready' && canDownload && (
+        <a
+          href={`/api/servers/${serverId}/backups/${backup.id}/download`}
+          className="grid size-8 place-items-center rounded-full text-zinc-400 transition hover:bg-raised hover:text-zinc-100"
+          aria-label="download"
+          title="download"
+        >
+          <IconDownload size={18} />
+        </a>
       )}
-      {backup.status !== 'creating' && (
+      {backup.status === 'ready' && onRestore && (
+        <IconButton onClick={onRestore} aria-label="restore" title="restore">
+          <IconHistory size={18} />
+        </IconButton>
+      )}
+      {backup.status !== 'creating' && onDelete && (
         <IconButton onClick={onDelete} aria-label="delete" title="delete">
           <IconTrash size={18} />
         </IconButton>

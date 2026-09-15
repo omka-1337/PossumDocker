@@ -8,10 +8,12 @@ Self-hosted panel for creating and running game servers — from Minecraft to Co
 
 ## How it works
 
-- **Panel** (`panel/`, Python/FastAPI) — web API, users, database.
-- **Web UI** (`web/`, React + TypeScript + Vite).
-- **Agent** (`agent/`, Go) — the only component with access to Docker — *planned before the first release*.
-- **Game templates** (`templates/*.yaml`) — describe a game: the create-server form, ports, install step and runtime container. Adding a game means adding a template, not code.
+- **Panel** (`panel/`, Python/FastAPI) — web API, users and permissions, database.
+- **Web UI** (`web/`, React + TypeScript + Vite), served by the panel.
+- **Agent** (`agent/`, Go) — the only component with access to Docker. The panel sends it container specs and
+  file operations over HTTP with a shared token; the agent listens on an internal network only the panel can reach.
+- **Game templates** (`templates/*.yaml`) — describe a game: the create-server form, ports, install step, runtime
+  container, config files, backups. Adding a game means adding a template, not code.
 
 ## Install
 
@@ -40,7 +42,7 @@ Everything the panel keeps (database, backups) is in `data/`. Game servers live 
 
 ### Panel
 
-Requires Python 3.12+ and access to Docker (the user must be able to run `docker ps`).
+Requires Python 3.12+ and, without an agent, access to Docker (the user must be able to run `docker ps`).
 Game servers get containers named `dgs-<id>` and volumes named `dgs-<id>-data`.
 The file browser starts a small `busybox` helper (`dgs-<id>-files`, no network) that is removed when idle.
 
@@ -74,6 +76,19 @@ New migration after changing `app/models.py`:
 ```bash
 .venv/bin/alembic revision --autogenerate -m "describe the change"
 ```
+
+### Agent
+
+Requires Go 1.27+ (or build it with Docker: `docker build agent/`).
+
+```bash
+cd agent
+go test ./...
+DGS_AGENT_TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n') DGS_AGENT_LISTEN=127.0.0.1:8081 go run ./cmd/agent
+```
+
+Point a development panel at it with `DGS_AGENT_URL=http://127.0.0.1:8081` and the same `DGS_AGENT_TOKEN`.
+Without `DGS_AGENT_URL` the panel talks to Docker itself, which is only meant for development.
 
 ### Web UI
 

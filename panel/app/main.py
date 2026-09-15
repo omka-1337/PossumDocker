@@ -13,6 +13,7 @@ from app.core.db import create_engine, run_migrations
 from app.games.art import ArtCache
 from app.games.providers import OptionsProviders, default_providers
 from app.games.registry import load_templates
+from app.runtime.agent import AgentRuntime
 from app.runtime.docker import DockerRuntime
 from app.runtime.manager import Runtime, ServerManager
 from app.runtime.scheduler import Scheduler, resolve_timezone
@@ -30,7 +31,17 @@ def create_app(
         await run_migrations(settings.database_url)
         engine = create_engine(settings.database_url)
         sessionmaker = async_sessionmaker(engine, expire_on_commit=False)
-        docker = runtime or DockerRuntime()
+        if runtime is not None:
+            docker = runtime
+        elif settings.agent_url:
+            if not settings.agent_token:
+                raise RuntimeError("DGS_AGENT_URL is set but DGS_AGENT_TOKEN isn't")
+            docker = AgentRuntime(settings.agent_url, settings.agent_token)
+        else:
+            logging.getLogger(__name__).warning(
+                "no DGS_AGENT_URL: talking to Docker directly (development only)"
+            )
+            docker = DockerRuntime()
 
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             app.state.providers = providers or default_providers(client, settings.options_cache_ttl)

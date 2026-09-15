@@ -22,5 +22,8 @@ class Settings(BaseSettings):
     timezone: str | None = None
     # The built web UI (web/dist). Served by the panel when it exists; in development Vite serves it.
     web_dir: Path = REPO_ROOT / "web" / "dist"
+    # The Go agent that runs containers. Without it the panel talks to Docker itself (development only).
+    agent_url: str | None = None
+    agent_token: str | None = None
     # How long dynamic select options (game versions etc.) are cached, in seconds.
     options_cache_ttl: int = 3600

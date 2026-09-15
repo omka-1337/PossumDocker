@@ -1,7 +1,7 @@
-"""Talks to the Docker Engine API.
+"""Talks to the Docker Engine API directly: for development without the agent.
 
-Temporary: before the first release this moves into the Go agent, and the panel
-talks to the agent instead. Keep everything Docker-specific inside this module.
+In a real installation the panel uses app.runtime.agent and has no Docker access at all.
+Keep this in step with the agent (agent/internal/runtime); tests check both have the same methods.
 """
 
 import asyncio

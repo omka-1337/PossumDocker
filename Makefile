@@ -9,8 +9,8 @@ EXEC = $(COMPOSE) exec $$([ -t 0 ] || echo -T) panel
 help: ## Show the commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-start: .env ## Build and start the panel; asks for an administrator account on the first start
-	$(COMPOSE) up -d --build
+start: .env token ## Build and start the panel; asks for an administrator account on the first start
+	$(COMPOSE) up -d --build --remove-orphans
 	@$(MAKE) --no-print-directory wait
 	@$(EXEC) python -m app.cli ensure-admin
 	@echo "The panel is running at http://localhost:$$(grep '^DGS_PORT=' .env | cut -d= -f2)"
@@ -20,7 +20,8 @@ stop: ## Stop the panel (game servers keep running)
 
 update: ## Pull the latest version from GitHub and restart the panel
 	@git pull --ff-only || { echo "Can't update: this copy has local changes or has diverged from GitHub."; exit 1; }
-	$(COMPOSE) up -d --build
+	@$(MAKE) --no-print-directory token
+	$(COMPOSE) up -d --build --remove-orphans
 	@$(MAKE) --no-print-directory wait
 
 logs: ## Follow the panel's logs
@@ -40,6 +41,14 @@ admin: ## Add an administrator or reset a forgotten password
 	} > .env
 	@mkdir -p data
 	@echo "Created .env:"; sed 's/^/  /' .env
+
+# The secret the panel and the agent share. Added to .env once, also to an .env from an older version.
+.PHONY: token
+token: .env
+	@grep -q '^DGS_AGENT_TOKEN=' .env || { \
+		echo "DGS_AGENT_TOKEN=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env; \
+		echo "Added an agent token to .env"; \
+	}
 
 .PHONY: wait
 wait:

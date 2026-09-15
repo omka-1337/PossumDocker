@@ -134,6 +134,7 @@ def test_docker_files_matches_the_protocol():
     """The tests run against LocalFiles; make sure the real implementation takes the same arguments."""
     import inspect
 
+    from app.runtime.agent import AgentFiles
     from app.runtime.docker_files import DockerFiles
     from app.runtime.files import Files
     from tests.local_files import LocalFiles
@@ -146,6 +147,26 @@ def test_docker_files_matches_the_protocol():
     assert methods
     for name in methods:
         expected = params(getattr(Files, name))
-        for implementation in (DockerFiles, LocalFiles):
+        for implementation in (DockerFiles, AgentFiles, LocalFiles):
             actual = params(getattr(implementation, name))
             assert actual == expected, f"{implementation.__name__}.{name}{actual} != Files.{name}{expected}"
+
+
+def test_agent_runtime_matches_the_protocol():
+    import inspect
+
+    from app.runtime.agent import AgentRuntime
+    from app.runtime.docker import DockerRuntime
+    from app.runtime.manager import Runtime
+
+    def params(function) -> list[str]:
+        return list(inspect.signature(function, annotation_format=inspect.Format.STRING).parameters)
+
+    methods = [name for name, value in vars(Runtime).items() if callable(value) and not name.startswith("_")]
+    for name in methods:
+        for implementation in (DockerRuntime, AgentRuntime):
+            assert params(getattr(implementation, name)) == params(getattr(Runtime, name)), (
+                implementation,
+                name,
+            )
+    assert hasattr(AgentRuntime, "published_ports") and hasattr(DockerRuntime, "published_ports")

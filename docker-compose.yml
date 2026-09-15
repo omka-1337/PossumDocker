@@ -6,39 +6,35 @@ services:
     build: .
     image: dockergameserver-panel:local
     restart: unless-stopped
-    # Same user as the one who ran `make start`, so ./data stays theirs.
+    # Same user as the one who ran `make start`, so the data folder stays theirs.
     user: "${DGS_UID:-1000}:${DGS_GID:-1000}"
     ports:
       - "${DGS_PORT:-8080}:8080"
     environment:
-      # The panel reaches Docker only through the proxy below, never through the socket itself.
-      DOCKER_HOST: tcp://docker-proxy:2375
+      # The panel has no access to Docker at all: it asks the agent.
+      DGS_AGENT_URL: http://agent:8081
+      DGS_AGENT_TOKEN: "${DGS_AGENT_TOKEN:?missing in .env, run make start}"
       DGS_TIMEZONE: "${DGS_TIMEZONE:-}"
     volumes:
-      - ./data:/data
-    networks: [web, docker]
-    depends_on: [docker-proxy]
+      - "${DGS_DATA_DIR:-./data}:/data"
+    networks: [web, agent]
+    depends_on:
+      agent:
+        condition: service_healthy
 
-  # Lets the panel use only the parts of the Docker API it needs: containers, images, volumes, exec.
-  # Temporary: before the first release this role moves to the agent.
-  docker-proxy:
-    image: tecnativa/docker-socket-proxy:v0.5.0
+  # The only part that talks to Docker. It listens on an internal network the panel alone can reach.
+  agent:
+    build: ./agent
+    image: dockergameserver-agent:local
     restart: unless-stopped
     environment:
-      CONTAINERS: 1
-      IMAGES: 1
-      VOLUMES: 1
-      EXEC: 1
-      POST: 1
-      ALLOW_START: 1
-      ALLOW_STOP: 1
-      ALLOW_RESTARTS: 1
+      DGS_AGENT_TOKEN: "${DGS_AGENT_TOKEN:?missing in .env, run make start}"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [docker]
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [agent]
 
 networks:
   web: {}
-  # No way out and no published ports: only the panel can talk to the proxy.
-  docker:
+  # No way out and no published ports.
+  agent:
     internal: true

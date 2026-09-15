@@ -124,3 +124,38 @@ class Schedule(Base):
     last_status: Mapped[str | None] = mapped_column(String(16), default=None)
     last_message: Mapped[str | None] = mapped_column(String(1000), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
+    # Admins see and do everything, including creating servers and managing users.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Can't log in; existing sessions stop working.
+    disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+
+class UserSession(Base):
+    __tablename__ = "sessions"
+
+    # SHA-256 of the cookie token: a leaked database doesn't hand out logged-in sessions.
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+
+class ServerAccess(Base):
+    """What a non-admin user may do on one server. No row: the server is invisible to them."""
+
+    __tablename__ = "server_access"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    server_id: Mapped[str] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), primary_key=True)
+    # Permission names, see app.core.permissions.
+    permissions: Mapped[list[str]] = mapped_column(JSON, default=list)

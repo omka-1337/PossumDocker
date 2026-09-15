@@ -111,12 +111,14 @@ def test_remote_art_endpoints(client, tmp_path):
 
         async def from_url(self, url):
             self.url_calls.append(url)
-            return svg if url.endswith(".svg") else None  # the cover link is "down"
+            # The icon link works (as an SVG, whatever the template points to); the cover link is "down".
+            return svg if url == icon_link else None
 
         async def from_steam(self, appid, kind):
             assert appid == 10
             return jpeg if kind == "cover" else None
 
+    icon_link = client.app.state.templates["minecraft-java"].art.icon
     client.app.state.art = fake = FakeArt()
 
     # Steam game: cover from Steam, no icon available anywhere.
@@ -146,3 +148,29 @@ def test_console_rules_reach_the_ui(client):
     console = client.get("/api/templates/minecraft-java").json()["console"]
     assert {rule["color"] for rule in console["highlight"]} >= {"red", "yellow"}
     assert console["continuation"]
+
+
+def test_web_ui_is_served_with_client_side_routes(tmp_path, providers, runtime):
+    from fastapi.testclient import TestClient
+
+    from app.core.config import Settings
+    from app.main import create_app
+
+    web = tmp_path / "dist"
+    (web / "assets").mkdir(parents=True)
+    (web / "index.html").write_text("<div id=root>")
+    (web / "assets" / "app-abc123.js").write_text("console.log(1)")
+    settings = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'db.sqlite'}",
+        cache_dir=tmp_path / "cache",
+        backups_dir=tmp_path / "backups",
+        web_dir=web,
+    )
+    with TestClient(create_app(settings, providers, runtime)) as client:
+        assert client.get("/").text == "<div id=root>"
+        assert client.get("/servers/123").text == "<div id=root>"  # React Router handles it
+        asset = client.get("/assets/app-abc123.js")
+        assert asset.text == "console.log(1)" and "immutable" in asset.headers["cache-control"]
+        assert client.get("/api/nope").status_code == 404  # unknown API paths stay API errors
+        assert client.get("/api/health").json() == {"status": "ok"}
+        assert client.get("/../../etc/passwd").text == "<div id=root>"

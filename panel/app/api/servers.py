@@ -102,6 +102,12 @@ async def create_server(
         for port in templates[template_id].ports
         if (host_port := ports.get(port.name)) is not None
     }
+    published = getattr(manager.runtime, "published_ports", None)
+    if published:
+        try:
+            taken |= await published()  # e.g. another app's container already on 25565
+        except (RuntimeUnavailable, DockerError):
+            pass
     try:
         ports = allocate_ports(template.ports, taken)
     except RuntimeError as exc:

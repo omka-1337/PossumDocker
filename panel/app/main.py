@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api import router
@@ -55,7 +57,25 @@ def create_app(
 
     app = FastAPI(title="DockerGameServer Panel", lifespan=lifespan)
     app.include_router(router)
+    if (settings.web_dir / "index.html").is_file():
+        serve_web(app, settings.web_dir)
     return app
+
+
+def serve_web(app: FastAPI, web_dir: Path) -> None:
+    """The built React app. Any path that isn't a file is a client-side route: answer with index.html."""
+    root = web_dir.resolve()
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def web(path: str) -> FileResponse:
+        if path == "api" or path.startswith("api/"):
+            raise HTTPException(404, "not found")
+        file = (root / path).resolve()
+        if path and file.is_relative_to(root) and file.is_file():
+            # Vite puts a content hash in asset names, so they can be cached for good.
+            cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+            return FileResponse(file, headers={"Cache-Control": cache})
+        return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 logging.basicConfig(level=logging.INFO)

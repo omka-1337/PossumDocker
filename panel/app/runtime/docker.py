@@ -42,6 +42,18 @@ class ContainerState:
     health: str | None = None
 
 
+def _tar_with(path: str, data: bytes) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as tar:
+        folder = tarfile.TarInfo(posixpath.dirname(path))
+        folder.type, folder.mode = tarfile.DIRTYPE, 0o755
+        tar.addfile(folder)
+        info = tarfile.TarInfo(path)
+        info.size, info.mode, info.mtime = len(data), 0o755, int(time.time())
+        tar.addfile(info, io.BytesIO(data))
+    return buffer.getvalue()
+
+
 def container_name(server_id: str) -> str:
     return f"dgs-{server_id}"
 
@@ -90,6 +102,15 @@ class DockerRuntime:
                 )
         return states
 
+    async def published_ports(self) -> set[tuple[int, str]]:
+        """Host ports any container publishes. Inside a container the panel can't probe host ports itself."""
+        taken = set()
+        for container in await self._docker.containers.list(all="true"):
+            for port in container._container.get("Ports", []):
+                if port.get("PublicPort"):
+                    taken.add((port["PublicPort"], port.get("Type", "tcp")))
+        return taken
+
     async def state(self, server_id: str) -> ContainerState | None:
         try:
             info = await self._docker.containers.get(container_name(server_id))
@@ -125,18 +146,20 @@ class DockerRuntime:
         name = f"{container_name(server_id)}-install"
         await self._remove_container(name)
 
-        binds = [f"{volume_name(server_id)}:{spec.data_path}"]
-        if spec.script:
-            binds.append(f"{spec.script}:/dgs/install.sh:ro")
         container = await self._docker.containers.create(
             {
                 **self._base_config(spec, server_id, "install"),
                 "WorkingDir": spec.data_path,
-                "HostConfig": {"Binds": binds},
+                "HostConfig": {"Binds": [f"{volume_name(server_id)}:{spec.data_path}"]},
             },
             name=name,
         )
         try:
+            if spec.script:
+                # Copied in rather than bind-mounted: a bind needs a path on the Docker host,
+                # and the panel may itself run in a container where the script lives elsewhere.
+                script = await asyncio.to_thread(spec.script.read_bytes)
+                await container.put_archive("/", _tar_with("dgs/install.sh", script))
             await container.start()
             async for line in container.log(stdout=True, stderr=True, follow=True):
                 on_log(line.rstrip("\n"))

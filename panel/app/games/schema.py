@@ -121,6 +121,19 @@ class Mount(StrictModel):
     path: Annotated[str, Field(pattern=r"^/[\w./-]*$", max_length=255)]
 
 
+class ResourcesSpec(StrictModel):
+    """Defaults for a server's limits; an administrator can change them per server.
+
+    Jinja expressions like everything in `runtime`, so they can follow the game's own settings:
+    Minecraft's container needs its Java heap plus room for the JVM itself.
+    """
+
+    # Memory limit in MB. Unset: no limit.
+    memory_mb: str | None = None
+    # CPU cores the server may use, e.g. "2" or "1.5". Unset: no limit.
+    cpus: str | None = None
+
+
 class RuntimeSpec(StrictModel):
     image: str
     entrypoint: list[str] | None = None
@@ -133,6 +146,7 @@ class RuntimeSpec(StrictModel):
     # Instead of one mount at data_path: parts of the volume at several places (Valheim: /config and
     # /opt/valheim). Paths in config_files and backup are then relative to the volume, not data_path.
     mounts: list[Mount] = []
+    resources: ResourcesSpec = ResourcesSpec()
 
 
 class InstallSpec(StrictModel):

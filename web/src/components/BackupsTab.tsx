@@ -19,6 +19,7 @@ export function BackupsTab({ server, canBackup, canRestore }: { server: Server; 
   const actions = useBackupActions(server.id)
   const [creating, setCreating] = useState(false)
   const [restoring, setRestoring] = useState<Backup | null>(null)
+  const stopped = server.status === 'stopped' || server.status === 'crashed'
   const [deleting, setDeleting] = useState<Backup | null>(null)
 
   if (isPending) return <p className="text-sm text-muted">loading…</p>
@@ -93,7 +94,7 @@ export function BackupsTab({ server, canBackup, canRestore }: { server: Server; 
               ? `these files and folders are replaced with the ones in the backup: ${restoring.paths.join(', ')}.`
               : "the server's files are replaced with the backup. anything added since then is lost."}
           </p>
-          {server.status !== 'stopped' && (
+          {!stopped && (
             <p className="mb-4 rounded-xl bg-amber-950/40 px-3 py-2 text-sm text-amber-200">stop the server first.</p>
           )}
           <div className="flex gap-2">
@@ -103,7 +104,7 @@ export function BackupsTab({ server, canBackup, canRestore }: { server: Server; 
             <Button
               variant="danger"
               className="flex-1"
-              disabled={server.status !== 'stopped' || actions.restore.isPending}
+              disabled={!stopped || actions.restore.isPending}
               onClick={() => actions.restore.mutate(restoring.id, { onSuccess: () => setRestoring(null) })}
             >
               <IconHistory size={16} /> restore

@@ -62,6 +62,9 @@ type ContainerSpec struct {
 	Ports      []PortBinding     `json:"ports"`
 	DataPath   string            `json:"data_path"`
 	Mounts     []Mount           `json:"mounts"`
+	// Limits; 0 or absent: no limit.
+	MemoryMB int     `json:"memory_mb"`
+	CPUs     float64 `json:"cpus"`
 	// Install script, run with sh. Copied into the container, never bind-mounted.
 	Script []byte `json:"script"`
 }
@@ -70,6 +73,35 @@ type ContainerSpec struct {
 type State struct {
 	Status string `json:"status"`           // "running", "exited", "created", ...
 	Health string `json:"health,omitempty"` // "starting", "healthy", "unhealthy" when the image has a healthcheck
+	// How the last run ended, once it has.
+	ExitCode  *int `json:"exit_code,omitempty"`
+	OOMKilled bool `json:"oom_killed,omitempty"`
+}
+
+const (
+	// Docker brings a crashed server back this many times before giving up.
+	RestartAttempts = 3
+	// A runaway plugin can't fork-bomb the host.
+	PidsLimit = 4096
+)
+
+// hostLimits are the crash restarts and resource limits of a runtime container.
+// Keep in step with host_limits in panel/app/runtime/docker.py.
+func hostLimits(spec ContainerSpec) map[string]any {
+	limits := map[string]any{
+		// Only a non-zero exit is restarted; the panel switches this off before stopping a server.
+		"RestartPolicy": map[string]any{"Name": "on-failure", "MaximumRetryCount": RestartAttempts},
+		"PidsLimit":     PidsLimit,
+	}
+	if spec.MemoryMB > 0 {
+		// Same limit for memory+swap: past it the game is killed instead of swapping the host to a crawl.
+		bytes := int64(spec.MemoryMB) * 1024 * 1024
+		limits["Memory"], limits["MemorySwap"] = bytes, bytes
+	}
+	if spec.CPUs > 0 {
+		limits["NanoCpus"] = int64(spec.CPUs * 1e9)
+	}
+	return limits
 }
 
 // Dirs creates folders inside a server's volume. Implemented by the files helper.
@@ -89,7 +121,10 @@ func New(docker *engine.Client, dirs Dirs, log *slog.Logger) *Runtime {
 
 // --- queries ---------------------------------------------------------------
 
-var healthInStatus = regexp.MustCompile(`\((?:health: )?(starting|healthy|unhealthy)\)`)
+var (
+	healthInStatus = regexp.MustCompile(`\((?:health: )?(starting|healthy|unhealthy)\)`)
+	exitInStatus   = regexp.MustCompile(`^Exited \((-?\d+)\)`)
+)
 
 // States returns the state of every game server container, keyed by server id, in one Docker call.
 func (r *Runtime) States(ctx context.Context) (map[string]State, error) {
@@ -103,14 +138,22 @@ func (r *Runtime) States(ctx context.Context) (map[string]State, error) {
 		if id == "" {
 			continue
 		}
-		state := State{Status: c.State}
-		// "Up 5 minutes (healthy)": the list call has health only inside this text.
-		if m := healthInStatus.FindStringSubmatch(c.Status); m != nil {
-			state.Health = m[1]
-		}
-		states[id] = state
+		states[id] = listedState(c.State, c.Status)
 	}
 	return states, nil
+}
+
+// listedState reads what the list call has only as text: "Up 5 minutes (healthy)", "Exited (137) 2 minutes ago".
+func listedState(status, text string) State {
+	state := State{Status: status}
+	if m := healthInStatus.FindStringSubmatch(text); m != nil {
+		state.Health = m[1]
+	}
+	if m := exitInStatus.FindStringSubmatch(text); m != nil {
+		code, _ := strconv.Atoi(m[1])
+		state.ExitCode = &code
+	}
+	return state
 }
 
 // State of one server's container; nil when it doesn't exist.
@@ -125,6 +168,11 @@ func (r *Runtime) State(ctx context.Context, serverID string) (*State, error) {
 	state := &State{Status: info.State.Status}
 	if info.State.Health != nil {
 		state.Health = info.State.Health.Status
+	}
+	if info.State.Status == "exited" || info.State.Status == "dead" {
+		code := info.State.ExitCode
+		state.ExitCode = &code
+		state.OOMKilled = info.State.OOMKilled
 	}
 	return state, nil
 }
@@ -237,12 +285,10 @@ func (r *Runtime) Create(ctx context.Context, serverID string, spec ContainerSpe
 		exposed[key] = map[string]any{}
 		bindings[key] = []map[string]string{{"HostPort": strconv.Itoa(p.Host)}}
 	}
-	host := map[string]any{
-		"PortBindings":  bindings,
-		"RestartPolicy": map[string]string{"Name": "no"},
-		// A tiny init as PID 1 forwards SIGTERM to the game; a game running as PID 1 would ignore it.
-		"Init": true,
-	}
+	host := hostLimits(spec)
+	host["PortBindings"] = bindings
+	// A tiny init as PID 1 forwards SIGTERM to the game; a game running as PID 1 would ignore it.
+	host["Init"] = true
 	if len(spec.Mounts) == 0 {
 		host["Binds"] = []string{VolumeName(serverID) + ":" + spec.DataPath}
 	} else {
@@ -289,6 +335,12 @@ func (r *Runtime) Start(ctx context.Context, serverID string) error {
 // Stop stops gracefully: the game's own stop command (if any), then SIGTERM, then SIGKILL.
 func (r *Runtime) Stop(ctx context.Context, serverID, command string, timeout int) error {
 	name := ContainerName(serverID)
+	// A game that exits with an error code on its way down must not be brought back by Docker.
+	// The next start creates a new container with the policy back on.
+	norestart := map[string]any{"RestartPolicy": map[string]any{"Name": "no"}}
+	if err := r.docker.ContainerUpdate(ctx, name, norestart); err != nil {
+		return err
+	}
 	if command != "" {
 		if err := r.SendCommand(ctx, serverID, command); err != nil {
 			return err

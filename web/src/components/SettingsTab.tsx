@@ -9,7 +9,7 @@ import { FieldError, FieldInput, inputClass } from './FieldInput'
 import { Button } from './ui'
 
 /** Everything that can be changed after creation: the game's own fields, then its config files. */
-export function SettingsTab({ server }: { server: Server }) {
+export function SettingsTab({ server, isAdmin }: { server: Server; isAdmin: boolean }) {
   const { data: template } = useTemplate(server.template_id)
   const { data: configs = [] } = useConfigs(server.id)
   const [restartNeeded, setRestartNeeded] = useState(false)
@@ -44,6 +44,16 @@ export function SettingsTab({ server }: { server: Server }) {
         )}
       </Section>
 
+      {isAdmin && (
+        <Section title="resources">
+          <ResourceLimits
+            key={JSON.stringify(server.limits)}
+            server={server}
+            onRestartNeeded={() => setRestartNeeded(true)}
+          />
+        </Section>
+      )}
+
       {configs.map((config) => (
         <Section key={config.id} title={config.label} subtitle={config.path}>
           <ConfigEditor server={server} configId={config.id} onRestartNeeded={() => setRestartNeeded(true)} />
@@ -64,6 +74,98 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
       </h2>
       {children}
     </section>
+  )
+}
+
+const describeMemory = (mb: number | null) => (mb ? `${mb} MB` : 'no limit')
+const describeCpus = (cpus: number | null) => (cpus ? `${cpus} ${cpus === 1 ? 'core' : 'cores'}` : 'no limit')
+
+// Input text for a saved limit: empty follows the template.
+const asText = (value: number | null) => (value === null ? '' : String(value))
+const fromText = (text: string) => (text.trim() === '' ? null : Number(text))
+
+/** Memory and CPU caps for the container. Only administrators see and change these. */
+function ResourceLimits({ server, onRestartNeeded }: { server: Server; onRestartNeeded: () => void }) {
+  const { limits } = server
+  const [memory, setMemory] = useState(asText(limits.memory_mb))
+  const [cpus, setCpus] = useState(asText(limits.cpus))
+  const update = useUpdateServer(server.id)
+  const fieldErrors = update.error instanceof ApiError ? update.error.fieldErrors : {}
+
+  const dirty = memory !== asText(limits.memory_mb) || cpus !== asText(limits.cpus)
+  const invalid = [memory, cpus].some((text) => text.trim() !== '' && !(Number(text) >= 0))
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    update.mutate(
+      { memory_limit_mb: fromText(memory), cpu_limit: fromText(cpus) },
+      { onSuccess: (result) => result.restart_required && onRestartNeeded() },
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-5">
+      <p className="text-sm text-muted">
+        empty follows the game&apos;s default, 0 removes the limit. a server that goes over its memory is stopped and
+        restarted.
+      </p>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label htmlFor="limit-memory" className="mb-1.5 block text-sm font-medium">
+            memory (MB)
+          </label>
+          <input
+            id="limit-memory"
+            type="number"
+            min={0}
+            step={128}
+            className={inputClass}
+            value={memory}
+            placeholder={`default: ${describeMemory(limits.default.memory_mb)}`}
+            onChange={(e) => setMemory(e.target.value)}
+          />
+          <FieldError error={fieldErrors.memory_limit_mb} />
+        </div>
+        <div>
+          <label htmlFor="limit-cpus" className="mb-1.5 block text-sm font-medium">
+            cpu cores
+          </label>
+          <input
+            id="limit-cpus"
+            type="number"
+            min={0}
+            step={0.5}
+            className={inputClass}
+            value={cpus}
+            placeholder={`default: ${describeCpus(limits.default.cpus)}`}
+            onChange={(e) => setCpus(e.target.value)}
+          />
+          <FieldError error={fieldErrors.cpu_limit} />
+        </div>
+      </div>
+
+      {update.error && Object.keys(fieldErrors).length === 0 && (
+        <p className="text-sm text-red-400">{update.error.message}</p>
+      )}
+
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary" disabled={!dirty || invalid || update.isPending}>
+          {update.isPending ? 'saving…' : 'save'}
+        </Button>
+        {dirty && (
+          <Button
+            type="button"
+            onClick={() => {
+              setMemory(asText(limits.memory_mb))
+              setCpus(asText(limits.cpus))
+              update.reset()
+            }}
+          >
+            discard
+          </Button>
+        )}
+      </div>
+    </form>
   )
 }
 

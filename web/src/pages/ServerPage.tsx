@@ -131,7 +131,7 @@ function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permi
       ) : tab === 'access' ? (
         <AccessTab serverId={server.id} />
       ) : (
-        <SettingsTab server={server} />
+        <SettingsTab server={server} isAdmin={isAdmin} />
       )}
     </>
   )
@@ -166,7 +166,11 @@ function Actions({ server, canControl, isAdmin }: { server: Server; canControl: 
           </Button>
           )
         ) : (
-          <Button variant="primary" onClick={() => run('start')} disabled={busy || status !== 'stopped'}>
+          <Button
+            variant="primary"
+            onClick={() => run('start')}
+            disabled={busy || (status !== 'stopped' && status !== 'crashed')}
+          >
             <IconPlayerPlay size={16} /> start
           </Button>
         )}

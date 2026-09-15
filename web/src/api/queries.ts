@@ -7,7 +7,8 @@ import {
   type Schedule,
   type ScheduleWrite,
   type ConfigSummary,
-  type FieldValues,
+  type ServerStatus,
+  type ServerUpdate,
   type Option,
   type Server,
   type ServerCreate,
@@ -71,19 +72,23 @@ export function useServers() {
     queryKey: keys.servers,
     queryFn: () => api<Server[]>('/servers'),
     // Keep refreshing while something is installing / starting / stopping.
-    refetchInterval: (query) =>
-      query.state.data?.some((s) => TRANSITIONAL.includes(s.status)) ? POLL_MS : false,
+    refetchInterval: (query) => pollInterval(query.state.data?.map((s) => s.status) ?? []),
   })
+}
+
+// Running servers are checked now and then too: they can crash.
+const RUNNING_POLL_MS = 10_000
+
+function pollInterval(statuses: ServerStatus[]) {
+  if (statuses.some((s) => TRANSITIONAL.includes(s))) return POLL_MS
+  return statuses.includes('running') ? RUNNING_POLL_MS : false
 }
 
 export function useServer(id: string) {
   return useQuery({
     queryKey: keys.server(id),
     queryFn: () => api<Server>(`/servers/${id}`),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status
-      return status && TRANSITIONAL.includes(status) ? POLL_MS : false
-    },
+    refetchInterval: (query) => pollInterval(query.state.data ? [query.state.data.status] : []),
   })
 }
 
@@ -127,7 +132,7 @@ export function useServerAction(id: string) {
 export function useUpdateServer(id: string) {
   const update = useUpdateServerCache()
   return useMutation({
-    mutationFn: (body: { name?: string; values: FieldValues }) =>
+    mutationFn: (body: ServerUpdate) =>
       api<ServerUpdateResult>(`/servers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: (result) => update(result.server),
   })

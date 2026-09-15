@@ -26,6 +26,15 @@ class AgentError(RuntimeUnavailable):
     """The agent is unreachable, or Docker behind it failed."""
 
 
+def _state(data: dict) -> ContainerState:
+    return ContainerState(
+        status=data["status"],
+        health=data.get("health"),
+        exit_code=data.get("exit_code"),
+        oom_killed=data.get("oom_killed", False),
+    )
+
+
 def _spec_json(spec: ContainerSpec, script: bytes | None = None) -> dict:
     data = asdict(spec)
     data.pop("script")
@@ -110,7 +119,7 @@ class AgentRuntime:
 
     async def states(self) -> dict[str, ContainerState]:
         data = (await self._call("GET", "/v1/servers")).json()
-        return {sid: ContainerState(status=s["status"], health=s.get("health")) for sid, s in data.items()}
+        return {sid: _state(s) for sid, s in data.items()}
 
     async def state(self, server_id: str) -> ContainerState | None:
         try:
@@ -119,7 +128,7 @@ class AgentRuntime:
             if exc.status == 404:
                 return None
             raise
-        return ContainerState(status=data["status"], health=data.get("health"))
+        return _state(data)
 
     async def published_ports(self) -> set[tuple[int, str]]:
         return {(port, proto) for port, proto in (await self._call("GET", "/v1/ports")).json()}

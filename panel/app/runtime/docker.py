@@ -40,6 +40,30 @@ class ContainerState:
     status: Literal["created", "running", "paused", "restarting", "removing", "exited", "dead"]
     # "starting" | "healthy" | "unhealthy" when the image has a healthcheck, else None.
     health: str | None = None
+    # How the last run ended, once it has.
+    exit_code: int | None = None
+    oom_killed: bool = False
+
+
+RESTART_ATTEMPTS = 3
+PIDS_LIMIT = 4096
+
+
+def host_limits(spec: ContainerSpec) -> dict:
+    """Crash restarts and resource limits, shared by the agent (agent/internal/runtime keeps them in step)."""
+    limits: dict = {
+        # Docker brings a crashed server back (non-zero exit) a few times; a clean stop (exit 0) or
+        # a stop from the panel stays stopped.
+        "RestartPolicy": {"Name": "on-failure", "MaximumRetryCount": RESTART_ATTEMPTS},
+        # A runaway plugin can't fork-bomb the host.
+        "PidsLimit": PIDS_LIMIT,
+    }
+    if spec.memory_mb:
+        # Same limit for memory+swap: no swapping past the limit, the game gets killed instead.
+        limits["Memory"] = limits["MemorySwap"] = spec.memory_mb * 1024 * 1024
+    if spec.cpus:
+        limits["NanoCpus"] = int(spec.cpus * 1_000_000_000)
+    return limits
 
 
 def _tar_with(path: str, data: bytes) -> bytes:
@@ -64,6 +88,12 @@ def volume_name(server_id: str) -> str:
 
 def _labels(server_id: str, role: str) -> dict[str, str]:
     return {LABEL_MANAGED: "true", LABEL_SERVER: server_id, LABEL_ROLE: role}
+
+
+def _exit_code_from_status(status_text: str) -> int | None:
+    # `docker ps` status text: "Exited (137) 2 minutes ago"
+    match = re.match(r"Exited \((-?\d+)\)", status_text)
+    return int(match.group(1)) if match else None
 
 
 def _health_from_status(status_text: str) -> str | None:
@@ -97,8 +127,11 @@ class DockerRuntime:
             info = container._container
             server_id = info.get("Labels", {}).get(LABEL_SERVER)
             if server_id:
+                text = info.get("Status", "")
                 states[server_id] = ContainerState(
-                    status=info["State"], health=_health_from_status(info.get("Status", ""))
+                    status=info["State"],
+                    health=_health_from_status(text),
+                    exit_code=_exit_code_from_status(text),
                 )
         return states
 
@@ -119,7 +152,12 @@ class DockerRuntime:
                 return None
             raise
         state = info["State"]
-        return ContainerState(status=state["Status"], health=(state.get("Health") or {}).get("Status"))
+        return ContainerState(
+            status=state["Status"],
+            health=(state.get("Health") or {}).get("Status"),
+            exit_code=state.get("ExitCode") if state["Status"] in ("exited", "dead") else None,
+            oom_killed=bool(state.get("OOMKilled")),
+        )
 
     # --- install -------------------------------------------------------------
 
@@ -189,7 +227,7 @@ class DockerRuntime:
                 "HostConfig": {
                     **self._volume_config(server_id, spec),
                     "PortBindings": {port_key(p): [{"HostPort": str(p.host)}] for p in spec.ports},
-                    "RestartPolicy": {"Name": "no"},
+                    **host_limits(spec),
                     # A tiny init as PID 1 forwards SIGTERM to the game; a game running as PID 1
                     # itself would ignore it and only die from SIGKILL after the timeout.
                     "Init": True,
@@ -234,6 +272,13 @@ class DockerRuntime:
     async def stop(self, server_id: str, command: str | None, timeout: int) -> None:
         """Graceful stop: console command (if the game has one), then SIGTERM, then SIGKILL."""
         container = await self._docker.containers.get(container_name(server_id))
+        # A game that exits with an error code on its way down must not be brought back by Docker.
+        # The next start creates a new container with the policy back on.
+        await self._docker._query_json(
+            f"containers/{container_name(server_id)}/update",
+            method="POST",
+            data={"RestartPolicy": {"Name": "no"}},
+        )
         if command:
             await self.send_command(server_id, command)
             try:

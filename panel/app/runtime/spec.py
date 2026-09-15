@@ -38,6 +38,9 @@ class ContainerSpec:
     data_path: str = "/data"
     # Parts of the volume at several paths; empty: the whole volume at data_path.
     mounts: list[VolumeMount] = field(default_factory=list)
+    # Limits; None: no limit.
+    memory_mb: int | None = None
+    cpus: float | None = None
     # Host file mounted read-only at /dgs/install.sh
     script: Path | None = None
 
@@ -94,6 +97,33 @@ def _render_list(items: list[str] | None, context: dict) -> list[str] | None:
     return [arg for arg in rendered if arg != ""]
 
 
+MIN_MEMORY_MB = 64
+
+
+def default_limits(template: Template, values: dict) -> tuple[int | None, float | None]:
+    """The template's memory (MB) and CPU limits for these field values."""
+    resources = template.runtime.resources
+    memory = cpus = None
+    if resources.memory_mb:
+        memory = max(MIN_MEMORY_MB, int(float(_render(resources.memory_mb, values, strict=True))))
+    if resources.cpus:
+        cpus = float(_render(resources.cpus, values, strict=True))
+    return memory, cpus
+
+
+def effective_limits(template: Template, server: Server) -> tuple[int | None, float | None]:
+    """What the container gets: the administrator's override for this server, else the template default.
+
+    A limit of 0 set by the administrator means "no limit", even if the template has a default.
+    """
+    memory, cpus = default_limits(template, server.values)
+    if server.memory_limit_mb is not None:
+        memory = server.memory_limit_mb or None
+    if server.cpu_limit is not None:
+        cpus = server.cpu_limit or None
+    return memory, cpus
+
+
 def build_spec(template: Template, server: Server, templates_dir: Path) -> ServerSpec:
     context = {
         **server.values,
@@ -116,6 +146,8 @@ def build_spec(template: Template, server: Server, templates_dir: Path) -> Serve
         ports=ports,
         data_path=runtime.data_path,
         mounts=[VolumeMount(subpath=m.subpath, path=m.path) for m in runtime.mounts],
+        memory_mb=(limits := effective_limits(template, server))[0],
+        cpus=limits[1],
     )
 
     install_spec = None

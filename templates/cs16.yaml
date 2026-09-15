@@ -67,6 +67,9 @@ runtime:
     command: quit
     timeout: 15
   data_path: /data
+  resources:
+    # HLDS itself needs well under 100 MB; room for AMX Mod X and plugins.
+    memory_mb: "512"
 
 config_files:
   - id: server_cfg

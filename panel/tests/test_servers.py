@@ -1,4 +1,5 @@
-from tests.conftest import wait_for_status
+from app.runtime.docker import ContainerState
+from tests.conftest import add_user, login, wait_for_status
 
 
 def create(client, template_id="minecraft-java", name="Survival", **values):
@@ -181,3 +182,72 @@ def test_start_refuses_a_running_server(client):
     server = create_installed(client, "cs16")
     client.post(f"/api/servers/{server['id']}/start")
     assert client.post(f"/api/servers/{server['id']}/start").status_code == 409
+
+
+def test_a_crash_is_not_a_stop(client, runtime):
+    server = create_installed(client, "cs16")
+    url = f"/api/servers/{server['id']}"
+    client.post(f"{url}/start")
+
+    # Docker gave up restarting it.
+    runtime.containers[server["id"]] = ContainerState("exited", exit_code=137, oom_killed=True)
+    crashed = client.get(url).json()
+    assert crashed["status"] == "crashed"
+    assert crashed["status_message"] == "ran out of memory (exit code 137)"
+    assert client.get("/api/servers").json()[0]["status"] == "crashed"
+
+    # The game quitting cleanly by itself is just stopped.
+    runtime.containers[server["id"]] = ContainerState("exited", exit_code=0)
+    assert client.get(url).json()["status"] == "stopped"
+
+    # Stopped from the panel, a non-zero exit is no crash either.
+    runtime.containers[server["id"]] = ContainerState("running")
+    client.post(f"{url}/stop")
+    wait_for_status(client, server["id"], "stopped")
+    runtime.containers[server["id"]] = ContainerState("exited", exit_code=143)
+    assert client.get(url).json()["status"] == "stopped"
+
+
+def test_servers_that_were_running_start_again_with_the_panel(client, runtime):
+    server = create_installed(client, "cs16")
+    other = create_installed(client, "cs16", name="other")
+    client.post(f"/api/servers/{server['id']}/start")
+    runtime.containers[server["id"]] = ContainerState("exited", exit_code=255)  # the host rebooted
+    runtime.containers[other["id"]] = ContainerState("exited", exit_code=0)
+
+    client.portal.call(client.app.state.manager._resume)
+    assert runtime.containers[server["id"]].status == "running"
+    assert runtime.containers[other["id"]].status == "exited"  # never started from the panel
+
+
+def test_resource_limits(client, runtime):
+    server = create_installed(client, "cs16")
+    url = f"/api/servers/{server['id']}"
+    assert server["limits"] == {"memory_mb": None, "cpus": None, "default": {"memory_mb": 512, "cpus": None}}
+
+    client.post(f"{url}/start")
+    resp = client.patch(url, json={"memory_limit_mb": 1024, "cpu_limit": 2})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["restart_required"] is True
+    assert resp.json()["server"]["limits"]["memory_mb"] == 1024
+
+    client.post(f"{url}/stop")
+    wait_for_status(client, server["id"], "stopped")
+    client.post(f"{url}/start")
+    assert (runtime.specs[server["id"]].memory_mb, runtime.specs[server["id"]].cpus) == (1024, 2)
+
+    # Back to the template's default.
+    assert client.patch(url, json={"memory_limit_mb": None}).json()["server"]["limits"]["memory_mb"] is None
+    assert client.patch(url, json={"memory_limit_mb": 10}).status_code == 422
+
+
+def test_only_administrators_change_limits(client):
+    from tests.test_auth import PASSWORD, grant  # it imports this module
+
+    server = create_installed(client, "cs16")
+    user_id = add_user(client, "player", PASSWORD)
+    grant(client, server["id"], user_id, "settings")
+    login(client, "player", PASSWORD)
+    url = f"/api/servers/{server['id']}"
+    assert client.patch(url, json={"memory_limit_mb": 0}).status_code == 403
+    assert client.patch(url, json={"name": "Renamed"}).status_code == 200

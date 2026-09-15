@@ -137,7 +137,7 @@ class Scheduler:
                         return "skipped", "the server isn't running"
                     await manager.restart(server)
                 case ScheduleAction.START:
-                    if status != ServerStatus.STOPPED:
+                    if status not in (ServerStatus.STOPPED, ServerStatus.CRASHED):
                         return "skipped", f"the server is {status.value.replace('_', ' ')}"
                     await manager.start(server)
                 case ScheduleAction.STOP:

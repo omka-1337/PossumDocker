@@ -30,9 +30,11 @@ type ContainerSummary struct {
 type ContainerInfo struct {
 	ID    string `json:"Id"`
 	State struct {
-		Status  string `json:"Status"`
-		Running bool   `json:"Running"`
-		Health  *struct {
+		Status    string `json:"Status"`
+		Running   bool   `json:"Running"`
+		ExitCode  int    `json:"ExitCode"`
+		OOMKilled bool   `json:"OOMKilled"`
+		Health    *struct {
 			Status string `json:"Status"`
 		} `json:"Health"`
 	} `json:"State"`
@@ -74,6 +76,11 @@ func (c *Client) ContainerStart(ctx context.Context, name string) error {
 func (c *Client) ContainerStop(ctx context.Context, name string, timeout int) error {
 	query := url.Values{"t": {strconv.Itoa(timeout)}}
 	return c.call(ctx, http.MethodPost, "/containers/"+url.PathEscape(name)+"/stop", query, nil, nil)
+}
+
+// ContainerUpdate changes a container's resources or restart policy without recreating it.
+func (c *Client) ContainerUpdate(ctx context.Context, name string, update any) error {
+	return c.call(ctx, http.MethodPost, "/containers/"+url.PathEscape(name)+"/update", nil, update, nil)
 }
 
 // ContainerRemove removes a container, running or not. A missing container is not an error.

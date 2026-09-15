@@ -3,7 +3,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, TypeDecorator
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    TypeDecorator,
+    false,
+)
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -70,6 +81,11 @@ class Server(Base):
     state: Mapped[ServerState] = mapped_column(_str_enum(ServerState), default=ServerState.PENDING)
     # Why the last install failed, shown to the user.
     state_message: Mapped[str | None] = mapped_column(String(1000), default=None)
+    # Started from the panel and not stopped since: brought back after a reboot, and a crash is a crash.
+    should_run: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Set by an administrator; None: the template's default, 0: no limit.
+    memory_limit_mb: Mapped[int | None] = mapped_column(Integer, default=None)
+    cpu_limit: Mapped[float | None] = mapped_column(Float, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 

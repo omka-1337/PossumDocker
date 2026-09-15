@@ -169,6 +169,7 @@ const statusDot: Record<ServerStatus, string> = {
   starting: 'bg-amber-400 animate-pulse',
   running: 'bg-emerald-400',
   stopping: 'bg-amber-400 animate-pulse',
+  crashed: 'bg-red-500',
   restoring: 'bg-sky-400 animate-pulse',
   unknown: 'bg-zinc-700',
 }

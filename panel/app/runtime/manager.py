@@ -7,6 +7,7 @@ import posixpath
 import shutil
 from collections import deque
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -55,8 +56,33 @@ class ServerStatus(enum.StrEnum):
     STARTING = "starting"
     RUNNING = "running"
     STOPPING = "stopping"
+    CRASHED = "crashed"  # exited with an error and Docker gave up restarting it
     RESTORING = "restoring"  # a backup is being put back
     UNKNOWN = "unknown"  # Docker is unreachable
+
+
+@dataclass(frozen=True)
+class StatusInfo:
+    status: ServerStatus
+    # Why: an install error, or how a crashed server ended.
+    message: str | None = None
+
+
+# Exit codes of a process killed by a signal: 128 + the signal.
+_SIGNALS = {134: "SIGABRT", 137: "SIGKILL", 139: "SIGSEGV", 143: "SIGTERM"}
+
+
+def crash_message(container: ContainerState) -> str:
+    if container.oom_killed:
+        return f"ran out of memory (exit code {container.exit_code})"
+    message = f"exited with code {container.exit_code}"
+    if signal := _SIGNALS.get(container.exit_code or 0):
+        message += f" ({signal}" + (", possibly out of memory" if signal == "SIGKILL" else "") + ")"
+    return message
+
+
+RESUME_ATTEMPTS = 12
+RESUME_DELAY = 5
 
 
 class ServerBusy(Exception):
@@ -84,6 +110,7 @@ class ServerManager:
         self.restore_errors: dict[str, str] = {}
         self._install_logs: dict[str, deque[str]] = {}
         self._reaper: asyncio.Task | None = None
+        self._resumer: asyncio.Task | None = None
 
     # --- startup / shutdown --------------------------------------------------
 
@@ -102,12 +129,13 @@ class ServerManager:
             await session.commit()
 
     async def shutdown(self) -> None:
-        tasks = [*self._tasks.values(), *([self._reaper] if self._reaper else [])]
+        tasks = [*self._tasks.values(), *(t for t in (self._reaper, self._resumer) if t)]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     def start_background_jobs(self) -> None:
+        self._resumer = asyncio.create_task(self._resume())
         reap = getattr(self.runtime.files, "reap_idle", None)
         if reap is None:
             return
@@ -122,13 +150,54 @@ class ServerManager:
 
         self._reaper = asyncio.create_task(reaper())
 
+    async def _resume(self) -> None:
+        """Start servers that should be running but aren't: after a reboot, or Docker's own restarts ran out.
+
+        Docker restarts a crashed container itself; this covers what it doesn't (a host reboot).
+        """
+        for _ in range(RESUME_ATTEMPTS):
+            try:
+                states = await self.runtime.states()
+                break
+            except RuntimeUnavailable:
+                # The agent may still be starting.
+                await asyncio.sleep(RESUME_DELAY)
+        else:
+            log.warning("docker unreachable, servers that were running are not started again")
+            return
+
+        async with self._sessionmaker() as session:
+            servers = await session.scalars(
+                select(Server).where(Server.should_run, Server.state == ServerState.INSTALLED)
+            )
+            for server in servers:
+                container = states.get(server.id)
+                if container and container.status in ("running", "restarting", "paused"):
+                    continue
+                log.info("starting %s again, it was running before", server.id)
+                try:
+                    await self.start(server)
+                except Exception:
+                    log.exception("starting %s again failed", server.id)
+
     # --- status --------------------------------------------------------------
 
     def status(
         self, server: Server, container: ContainerState | None, docker_ok: bool = True
     ) -> ServerStatus:
+        return self.status_info(server, container, docker_ok).status
+
+    def status_info(
+        self, server: Server, container: ContainerState | None, docker_ok: bool = True
+    ) -> StatusInfo:
         if server.state != ServerState.INSTALLED:
-            return ServerStatus(server.state.value)
+            return StatusInfo(ServerStatus(server.state.value), server.state_message)
+        status = self._live_status(server, container, docker_ok)
+        if status == ServerStatus.CRASHED:
+            return StatusInfo(status, crash_message(container))
+        return StatusInfo(status)
+
+    def _live_status(self, server: Server, container: ContainerState | None, docker_ok: bool) -> ServerStatus:
         if server.id in self._restoring:
             return ServerStatus.RESTORING
         if server.id in self._stopping:
@@ -143,15 +212,32 @@ class ServerManager:
             return ServerStatus.STARTING
         if container.status == "running":
             return ServerStatus.RUNNING
+        # Stopped without the panel stopping it: a crash, unless the game exited cleanly
+        # (e.g. `stop` typed into the console).
+        if server.should_run and container.status in ("exited", "dead"):
+            if container.oom_killed or container.exit_code not in (0, None):
+                return ServerStatus.CRASHED
         return ServerStatus.STOPPED
 
-    async def statuses(self, servers: list[Server]) -> dict[str, ServerStatus]:
+    async def status_infos(self, servers: list[Server]) -> dict[str, StatusInfo]:
         try:
             states = await self.runtime.states()
             docker_ok = True
         except RuntimeUnavailable:
             states, docker_ok = {}, False
-        return {s.id: self.status(s, states.get(s.id), docker_ok) for s in servers}
+        return {s.id: self.status_info(s, states.get(s.id), docker_ok) for s in servers}
+
+    async def statuses(self, servers: list[Server]) -> dict[str, ServerStatus]:
+        return {sid: info.status for sid, info in (await self.status_infos(servers)).items()}
+
+    async def status_info_of(self, server: Server) -> StatusInfo:
+        """One server, with the details only a full inspect has (was it out of memory)."""
+        if server.state != ServerState.INSTALLED:
+            return self.status_info(server, None)
+        try:
+            return self.status_info(server, await self.runtime.state(server.id))
+        except RuntimeUnavailable:
+            return self.status_info(server, None, docker_ok=False)
 
     async def status_of(self, server: Server) -> ServerStatus:
         return (await self.statuses([server]))[server.id]
@@ -181,8 +267,9 @@ class ServerManager:
             db_server = await session.get(Server, server.id)
             db_server.state = ServerState.INSTALLING
             db_server.state_message = None
+            db_server.should_run = False
             await session.commit()
-        server.state, server.state_message = ServerState.INSTALLING, None
+        server.state, server.state_message, server.should_run = ServerState.INSTALLING, None, False
         self._install_logs[server.id] = deque(maxlen=INSTALL_LOG_LINES)
         self._spawn(server.id, self._install(server.id))
 
@@ -225,6 +312,13 @@ class ServerManager:
             server.state_message = message
             await session.commit()
 
+    async def _set_should_run(self, server: Server, should_run: bool) -> None:
+        server.should_run = should_run
+        async with self._sessionmaker() as session:
+            if db_server := await session.get(Server, server.id):
+                db_server.should_run = should_run
+                await session.commit()
+
     # --- lifecycle -----------------------------------------------------------
 
     def _require_installed(self, server: Server) -> None:
@@ -245,6 +339,7 @@ class ServerManager:
         # The data lives in the volume, so a fresh container loses nothing but old console output.
         spec = build_spec(self._templates[server.template_id], server, self._templates_dir)
         await self.runtime.create(server.id, spec.runtime)
+        await self._set_should_run(server, True)
         await self.runtime.start(server.id)
 
     async def _ensure_container(self, server: Server) -> None:
@@ -273,6 +368,7 @@ class ServerManager:
         stop = self._templates[server.template_id].runtime.stop
         self._stopping.add(server.id)
         try:
+            await self._set_should_run(server, False)
             state = await self.runtime.state(server.id)
             if state and state.status in ("running", "restarting", "paused"):
                 await self.runtime.stop(server.id, stop.command, stop.timeout)
@@ -417,7 +513,7 @@ class ServerManager:
         self._require_installed(server)
         if backup.status != BackupStatus.READY:
             raise ServerBusy("this backup isn't complete")
-        if await self.status_of(server) != ServerStatus.STOPPED:
+        if await self.status_of(server) not in (ServerStatus.STOPPED, ServerStatus.CRASHED):
             raise ServerBusy("stop the server before restoring a backup")
         self._restoring.add(server.id)
         try:

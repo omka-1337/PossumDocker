@@ -103,6 +103,7 @@ export type ServerStatus =
   | 'starting'
   | 'running'
   | 'stopping'
+  | 'crashed' // exited with an error and Docker gave up restarting it
   | 'restoring' // a backup is being put back
   | 'unknown' // Docker is unreachable
 
@@ -110,6 +111,12 @@ export type ServerStatus =
 export const TRANSITIONAL: ServerStatus[] = ['installing', 'starting', 'stopping', 'restoring']
 
 export type FieldValues = Record<string, string | number | boolean>
+
+export interface Limits {
+  // null: no limit
+  memory_mb: number | null
+  cpus: number | null
+}
 
 export interface Server {
   id: string
@@ -119,9 +126,19 @@ export interface Server {
   // Host port per template port name: { game: 25565 }
   ports: Record<string, number>
   status: ServerStatus
-  // Why the last install failed.
+  // Why the last install failed, or how a crashed server ended.
   status_message: string | null
+  // Set by an administrator (null: the template's default, 0: no limit), and the template's default.
+  limits: Limits & { default: Limits }
   created_at: string
+}
+
+export interface ServerUpdate {
+  name?: string
+  values?: FieldValues
+  // Administrators only. null: back to the template's default, 0: no limit.
+  memory_limit_mb?: number | null
+  cpu_limit?: number | null
 }
 
 export interface ServerUpdateResult {

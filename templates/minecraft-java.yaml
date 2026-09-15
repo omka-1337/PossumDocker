@@ -81,6 +81,9 @@ runtime:
     command: stop
     timeout: 60
   data_path: /data
+  resources:
+    # The heap plus what Java needs outside it (threads, native memory, the JIT).
+    memory_mb: "{{ memory_mb + [memory_mb // 4, 768] | max }}"
 
 config_files:
   - id: server_properties

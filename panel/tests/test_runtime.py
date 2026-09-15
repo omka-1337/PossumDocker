@@ -3,9 +3,10 @@ import pytest
 from app.core.config import REPO_ROOT
 from app.games.schema import Port, Template
 from app.models import Server
-from app.runtime.docker import _health_from_status
+from app.runtime.docker import ContainerState, _exit_code_from_status, _health_from_status, host_limits
+from app.runtime.manager import crash_message
 from app.runtime.ports import allocate_ports
-from app.runtime.spec import build_spec, minecraft_java_tag
+from app.runtime.spec import ContainerSpec, build_spec, default_limits, effective_limits, minecraft_java_tag
 
 TEMPLATES_DIR = REPO_ROOT / "templates"
 
@@ -240,3 +241,55 @@ def test_install_script_goes_in_as_an_archive():
         member = tar.getmember("dgs/install.sh")
         assert tar.extractfile(member).read() == b"echo hi" and member.mode == 0o755
         assert tar.getmember("dgs").isdir()
+
+
+def test_minecraft_memory_limit_follows_the_heap():
+    template = load_template("minecraft-java")
+    server = Server(id="abc", name="mc", template_id="minecraft-java", ports={"game": 25565})
+    server.values = {"version": "1.21.1", "loader": "paper", "memory_mb": 2048, "eula": True}
+    assert default_limits(template, server.values) == (2048 + 768, None)
+    server.values["memory_mb"] = 8192
+    assert build_spec(template, server, TEMPLATES_DIR).runtime.memory_mb == 8192 + 2048
+
+
+def test_administrator_limits_override_the_template():
+    template = load_template("cs16")
+    server = Server(id="abc", name="cs", template_id="cs16", ports={"game": 27015})
+    server.values = {"map": "de_dust2", "max_players": 16, "vac": True, "rcon_password": "x" * 24}
+    assert effective_limits(template, server) == (512, None)
+    server.memory_limit_mb, server.cpu_limit = 0, 1.5  # 0: no limit, even though the template has one
+    assert effective_limits(template, server) == (None, 1.5)
+    server.memory_limit_mb = 2048
+    spec = build_spec(template, server, TEMPLATES_DIR).runtime
+    assert host_limits(spec) == {
+        "RestartPolicy": {"Name": "on-failure", "MaximumRetryCount": 3},
+        "PidsLimit": 4096,
+        "Memory": 2048 * 1024 * 1024,
+        "MemorySwap": 2048 * 1024 * 1024,
+        "NanoCpus": 1_500_000_000,
+    }
+
+
+def test_no_limits_by_default():
+    assert host_limits(ContainerSpec(image="x")) == {
+        "RestartPolicy": {"Name": "on-failure", "MaximumRetryCount": 3},
+        "PidsLimit": 4096,
+    }
+
+
+@pytest.mark.parametrize(
+    ("text", "code"),
+    [("Exited (137) 2 minutes ago", 137), ("Exited (0) 5 seconds ago", 0), ("Up 3 minutes", None)],
+)
+def test_exit_code_from_status(text, code):
+    assert _exit_code_from_status(text) == code
+
+
+def test_crash_message():
+    assert crash_message(ContainerState("exited", exit_code=1)) == "exited with code 1"
+    assert crash_message(ContainerState("exited", exit_code=137)) == (
+        "exited with code 137 (SIGKILL, possibly out of memory)"
+    )
+    assert crash_message(ContainerState("exited", exit_code=137, oom_killed=True)) == (
+        "ran out of memory (exit code 137)"
+    )

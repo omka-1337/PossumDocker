@@ -1,0 +1,79 @@
+id: minecraft-bedrock
+name: "Minecraft: Bedrock Edition"
+description: For players on phones, consoles and Windows.
+group: { id: minecraft, name: Minecraft, variant: Bedrock, order: 1 }
+icon: icons/minecraft-java.svg
+color: "#2d4a1e"
+art:
+  icon: https://images.icon-icons.com/3053/PNG/512/minecraft_macos_bigsur_icon_189943.png
+  cover: https://cdn2.steamgriddb.com/hero_thumb/043ab21fc5a1607b381ac3896176dac6.jpg
+
+fields:
+  - id: version
+    label: Version
+    type: select
+    default: LATEST
+    options:
+      - { value: LATEST, label: Latest release }
+      - { value: PREVIEW, label: Preview }
+    help: The server updates itself to the newest version of this channel on every start.
+    editable: true
+    on_change: restart
+
+  - id: eula
+    label: I accept the Minecraft EULA
+    type: boolean
+    must_be: true
+    help_url: https://aka.ms/MinecraftEULA
+
+ports:
+  # Bedrock tells clients its own port, so it listens on the one players connect to.
+  - { name: game, protocol: udp, default_host: 19132 }
+
+# No install step: the image downloads the server on its first start.
+runtime:
+  image: itzg/minecraft-bedrock-server:latest
+  env:
+    EULA: "TRUE"
+    VERSION: "{{ version }}"
+    SERVER_PORT: "{{ ports.game }}"
+    # IPv6 needs a port of its own; it isn't published, it only must not clash with the IPv4 one.
+    SERVER_PORT_V6: "{{ ports.game + 1 }}"
+  stop:
+    command: stop
+    timeout: 30
+  data_path: /data
+
+config_files:
+  - id: server_properties
+    label: Server properties
+    path: server.properties
+    format: properties
+    managed: [server-port, server-portv6]
+    hints:
+      server-name: { label: Server name, help: Shown in the server list. }
+      gamemode: { label: Default game mode, type: select, options: [survival, creative, adventure] }
+      difficulty: { label: Difficulty, type: select, options: [peaceful, easy, normal, hard] }
+      max-players: { label: Max players, type: number, min: 1, max: 1000 }
+      online-mode: { label: Online mode, type: boolean, help: Players must be signed in to Xbox Live. }
+      allow-list: { label: Allow list, type: boolean, help: Only players in allowlist.json can join. }
+      allow-cheats: { label: Allow cheats, type: boolean }
+      default-player-permission-level: { label: Permission level of new players, type: select, options: [visitor, member, operator] }
+      view-distance: { label: View distance, type: number, min: 5, max: 96 }
+      tick-distance: { label: Simulation distance, type: number, min: 4, max: 12 }
+      level-name: { label: World name }
+      level-seed: { label: World seed, help: Only used when a new world is generated. }
+
+backup:
+  paths: [worlds, server.properties, allowlist.json, permissions.json]
+  # Bedrock's way to keep the world files still while they are copied.
+  before: [save hold]
+  after: [save resume]
+  wait: 5
+
+console:
+  # "[2026-09-15 12:00:00:000 WARN] ..."
+  highlight:
+    - { pattern: '^\[[^\]]* ERROR\]|^ERROR ', color: red }
+    - { pattern: '^\[[^\]]* WARN\]|^WARN ', color: yellow }
+    - { pattern: '^\[init\]|\tmc-server-runner\t', color: gray }

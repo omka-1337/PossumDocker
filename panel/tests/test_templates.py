@@ -174,3 +174,25 @@ def test_web_ui_is_served_with_client_side_routes(tmp_path, providers, runtime):
         assert client.get("/api/nope").status_code == 404  # unknown API paths stay API errors
         assert client.get("/api/health").json() == {"status": "ok"}
         assert client.get("/../../etc/passwd").text == "<div id=root>"
+
+
+def test_minecraft_editions_share_a_group(client):
+    groups = {t["id"]: t["group"] for t in client.get("/api/templates").json()}
+    assert groups["minecraft-java"]["id"] == groups["minecraft-bedrock"]["id"] == "minecraft"
+    assert (groups["minecraft-java"]["variant"], groups["minecraft-bedrock"]["variant"]) == (
+        "Java",
+        "Bedrock",
+    )
+    assert groups["cs16"] is None
+
+
+def test_group_names_must_agree(tmp_path, providers):
+    from app.games.registry import TemplateLoadError, load_templates
+
+    for tid, name in (("a", "Minecraft"), ("b", "Craft")):
+        (tmp_path / f"{tid}.yaml").write_text(
+            f"id: {tid}\nname: {tid}\nruntime: {{image: alpine}}\n"
+            f"group: {{id: mc, name: {name}, variant: {tid}}}\n"
+        )
+    with pytest.raises(TemplateLoadError, match="group 'mc'"):
+        load_templates(tmp_path, providers)

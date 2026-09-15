@@ -1,12 +1,20 @@
 import pytest
 
 from app.core.config import REPO_ROOT
+from app.games.providers import neoforge_minecraft_version
 from app.games.schema import Port, Template
 from app.models import Server
 from app.runtime.docker import ContainerState, _exit_code_from_status, _health_from_status, host_limits
 from app.runtime.manager import crash_message
 from app.runtime.ports import allocate_ports
-from app.runtime.spec import ContainerSpec, build_spec, default_limits, effective_limits, minecraft_java_tag
+from app.runtime.spec import (
+    ContainerSpec,
+    PortBinding,
+    build_spec,
+    default_limits,
+    effective_limits,
+    minecraft_java_tag,
+)
 
 TEMPLATES_DIR = REPO_ROOT / "templates"
 
@@ -293,3 +301,57 @@ def test_crash_message():
     assert crash_message(ContainerState("exited", exit_code=137, oom_killed=True)) == (
         "ran out of memory (exit code 137)"
     )
+
+
+@pytest.mark.parametrize(
+    ("loader", "variable"),
+    [("fabric", "FABRIC_LOADER_VERSION"), ("forge", "FORGE_VERSION"), ("neoforge", "NEOFORGE_VERSION")],
+)
+def test_each_mod_loader_gets_only_its_own_version_variable(loader, variable):
+    server = Server(id="s1", name="x", template_id="minecraft-java", ports={"game": 25565})
+    server.values = {
+        "loader": loader,
+        "version": "1.21.1",
+        "loader_version": "1.2.3",
+        "memory_mb": 2048,
+        "eula": True,
+    }
+    env = build_spec(load_template("minecraft-java"), server, TEMPLATES_DIR).runtime.env
+    assert env["TYPE"] == loader.upper()
+    loader_variables = {"FABRIC_LOADER_VERSION", "FORGE_VERSION", "NEOFORGE_VERSION"}
+    assert {k: env[k] for k in loader_variables if k in env} == {variable: "1.2.3"}
+
+
+def test_bedrock_listens_on_its_published_port():
+    server = Server(id="s1", name="x", template_id="minecraft-bedrock", ports={"game": 19134})
+    server.values = {"version": "LATEST", "eula": True}
+    spec = build_spec(load_template("minecraft-bedrock"), server, TEMPLATES_DIR)
+    assert spec.install is None
+    assert spec.runtime.ports == [PortBinding(host=19134, container=19134, protocol="udp")]
+    assert (spec.runtime.env["SERVER_PORT"], spec.runtime.env["SERVER_PORT_V6"]) == ("19134", "19135")
+
+
+def test_bedrock_console_colours():
+    template = load_template("minecraft-bedrock")
+    lines = [
+        "[2026-09-15 12:00:00:000 INFO] Server started.",
+        "[2026-09-15 12:00:01:000 WARN] Something odd",
+        "[2026-09-15 12:00:02:000 ERROR] Something broke",
+    ]
+    assert colour_of(template, lines) == [None, "yellow", "red"]
+
+
+@pytest.mark.parametrize(
+    ("neoforge", "minecraft"),
+    [
+        ("20.2.93", "1.20.2"),
+        ("21.0.167", "1.21"),
+        ("21.1.250", "1.21.1"),
+        ("21.10.5-beta", "1.21.10"),
+        ("26.1.0.19-beta", "26.1"),
+        ("26.1.1.3", "26.1.1"),
+        ("0.25w14craftmine.3-beta", None),
+    ],
+)
+def test_neoforge_minecraft_version(neoforge, minecraft):
+    assert neoforge_minecraft_version(neoforge) == minecraft

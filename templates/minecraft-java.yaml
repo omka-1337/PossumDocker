@@ -1,6 +1,8 @@
 id: minecraft-java
 name: "Minecraft: Java Edition"
-description: Vanilla, Paper (plugins) or Fabric (mods).
+description: Vanilla, Paper (plugins), or Fabric, Forge and NeoForge (mods).
+# One "Minecraft" tile in the game picker, with a switch between editions.
+group: { id: minecraft, name: Minecraft, variant: Java, order: 0 }
 icon: icons/minecraft-java.svg
 color: "#2d4a1e"
 # Fetched and cached by the panel at runtime, not stored in this repository.
@@ -17,6 +19,8 @@ fields:
       - { value: vanilla, label: Vanilla }
       - { value: paper, label: Paper (plugins) }
       - { value: fabric, label: Fabric (mods) }
+      - { value: forge, label: Forge (mods) }
+      - { value: neoforge, label: NeoForge (mods) }
 
   - id: version
     label: Minecraft version
@@ -27,12 +31,12 @@ fields:
     on_change: reinstall
 
   - id: loader_version
-    label: Fabric loader version
+    label: Mod loader version
     type: select
     required: true
     options_from: minecraft.loader_versions
     depends_on: [loader, version]
-    visible_if: { loader: [fabric] }
+    visible_if: { loader: [fabric, forge, neoforge] }
     on_change: reinstall
 
   - id: memory_mb
@@ -71,7 +75,10 @@ runtime:
     EULA: "TRUE"
     TYPE: "{{ loader | upper }}"
     VERSION: "{{ version }}"
-    FABRIC_LOADER_VERSION: "{{ loader_version }}"
+    # Each loader reads its own variable; the others render empty and stay unset.
+    FABRIC_LOADER_VERSION: "{{ loader_version if loader == 'fabric' else '' }}"
+    FORGE_VERSION: "{{ loader_version if loader == 'forge' else '' }}"
+    NEOFORGE_VERSION: "{{ loader_version if loader == 'neoforge' else '' }}"
     MEMORY: "{{ memory_mb }}M"
     RCON_PASSWORD: "{{ rcon_password }}"
     # Mojang's CDN often resolves to IPv6 first; Docker networks usually have no IPv6 route,

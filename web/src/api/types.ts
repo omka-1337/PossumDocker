@@ -76,6 +76,15 @@ export interface TemplateSummary {
   cover_url: string | null
   // Icon tile background, e.g. "#c9862e"
   color: string | null
+  // Editions of one game (Minecraft Java and Bedrock) share a tile in the game picker
+  group: TemplateGroup | null
+}
+
+export interface TemplateGroup {
+  id: string
+  name: string
+  variant: string
+  order: number
 }
 
 export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue' | 'magenta' | 'cyan' | 'gray'

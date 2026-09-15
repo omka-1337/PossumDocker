@@ -41,6 +41,12 @@ def load_templates(directory: Path, providers: OptionsProviders) -> dict[str, Te
                 )
         if template.icon and icon_path(directory, template) is None:
             raise TemplateLoadError(f"{path.name}: icon '{template.icon}' not found in {directory}")
+        if template.group:
+            other = next((t for t in templates.values() if t.group and t.group.id == template.group.id), None)
+            if other and other.group.name != template.group.name:
+                raise TemplateLoadError(
+                    f"{path.name}: group '{template.group.id}' is named '{other.group.name}' in {other.id}"
+                )
         templates[template.id] = template
 
     log.info("Loaded %d game template(s) from %s", len(templates), directory)

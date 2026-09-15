@@ -282,6 +282,17 @@ class RemoteArt(StrictModel):
     cover: HttpsUrl | None = None
 
 
+class TemplateGroup(StrictModel):
+    """Editions of one game (Minecraft Java and Bedrock): a single tile in the game picker."""
+
+    id: Identifier
+    name: str
+    # This template's name within the group, e.g. "Java".
+    variant: str
+    # Position among the group's templates; the first one is picked by default.
+    order: int = 0
+
+
 class Template(StrictModel):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
     name: str
@@ -294,6 +305,7 @@ class Template(StrictModel):
     steam_appid: Annotated[int | None, Field(gt=0)] = None
     # Art from any public https link, fetched and cached by the panel; wins over Steam's.
     art: RemoteArt = RemoteArt()
+    group: TemplateGroup | None = None
     fields: list[TemplateField] = []
     ports: list[Port] = []
     install: InstallSpec | None = None

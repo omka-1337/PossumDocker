@@ -8,7 +8,16 @@ from app.api.deps import Providers, Templates, require_template
 from app.games.art import MEDIA_TYPES, ArtCache
 from app.games.providers import ProviderError
 from app.games.registry import icon_path
-from app.games.schema import ConsoleSpec, Option, Port, SecretField, SelectField, Template, TemplateField
+from app.games.schema import (
+    ConsoleSpec,
+    Option,
+    Port,
+    SecretField,
+    SelectField,
+    Template,
+    TemplateField,
+    TemplateGroup,
+)
 from app.games.validation import dependency_params
 
 router = APIRouter(prefix="/templates", tags=["templates"])
@@ -25,6 +34,7 @@ class TemplateSummary(BaseModel):
     # Wide cover art from the web (template `art.cover` or the Steam header).
     cover_url: str | None
     color: str | None
+    group: TemplateGroup | None
 
 
 class TemplateDetail(TemplateSummary):
@@ -46,6 +56,7 @@ def summary(template: Template) -> dict:
         "icon_url": f"{base}/icon" if template.icon else None,
         "cover_url": f"{base}/art/cover" if template.art.cover or steam else None,
         "color": template.color,
+        "group": template.group,
     }
 
 

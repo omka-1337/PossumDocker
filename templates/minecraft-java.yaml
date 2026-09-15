@@ -5,7 +5,7 @@ icon: icons/minecraft-java.svg
 color: "#2d4a1e"
 # Fetched and cached by the panel at runtime, not stored in this repository.
 art:
-  icon: https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/minecraft.svg
+  icon: https://images.icon-icons.com/3053/PNG/512/minecraft_macos_bigsur_icon_189943.png
   cover: https://cdn2.steamgriddb.com/hero_thumb/043ab21fc5a1607b381ac3896176dac6.jpg
 
 fields:

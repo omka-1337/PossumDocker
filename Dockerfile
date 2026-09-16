@@ -1,6 +1,6 @@
 # The panel: FastAPI serving the API and the built React UI, in one image.
 
-FROM node:22-alpine AS web
+FROM node:26-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci

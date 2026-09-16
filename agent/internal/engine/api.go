@@ -182,6 +182,15 @@ func (c *Client) VolumeCreate(ctx context.Context, name string, labels map[strin
 	return c.call(ctx, http.MethodPost, "/volumes/create", nil, map[string]any{"Name": name, "Labels": labels}, nil)
 }
 
+// VolumeExists reports whether a volume exists.
+func (c *Client) VolumeExists(ctx context.Context, name string) (bool, error) {
+	err := c.call(ctx, http.MethodGet, "/volumes/"+url.PathEscape(name), nil, nil, nil)
+	if IsNotFound(err) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // VolumeRemove removes a volume. A missing volume is not an error.
 func (c *Client) VolumeRemove(ctx context.Context, name string) error {
 	err := c.call(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(name), nil, nil, nil)

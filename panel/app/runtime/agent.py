@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-from app.runtime.files import FileEntry, FileError, Upload, resolve, validate_name
+from app.runtime.files import FileEntry, FileError, SearchMatch, Upload, resolve, validate_name
 from app.runtime.spec import ContainerSpec
 from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable, parse_docker_time
 
@@ -217,6 +217,17 @@ class AgentFiles:
     async def list(self, server_id: str, path: str) -> list[FileEntry]:
         data = (await self.agent.request("GET", self._url(server_id), params={"path": path})).json()
         return [FileEntry(**entry) for entry in data]
+
+    async def search(self, server_id: str, path: str, query: str) -> tuple[list[SearchMatch], bool]:
+        data = (
+            await self.agent.request(
+                "GET", self._url(server_id, "/search"), params={"path": path, "q": query}
+            )
+        ).json()
+        matches = [
+            SearchMatch(**{k: m[k] for k in ("path", "type", "size", "mtime")}) for m in data["matches"]
+        ]
+        return matches, data["truncated"]
 
     async def mkdir(self, server_id: str, path: str) -> None:
         await self._post(server_id, "/mkdir", {"path": path})

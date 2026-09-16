@@ -170,3 +170,20 @@ def test_agent_runtime_matches_the_protocol():
                 name,
             )
     assert hasattr(AgentRuntime, "published_ports") and hasattr(DockerRuntime, "published_ports")
+
+
+def test_search_finds_names_in_every_folder(client, server):
+    upload(
+        client,
+        server,
+        "",
+        {"world/level.dat": b"1", "world/region/r.0.0.mca": b"2", "Level-backup.txt": b"3"},
+    )
+    resp = client.get(url(server, "/search"), params={"q": "LEVEL"})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert [m["path"] for m in data["matches"]] == ["Level-backup.txt", "world/level.dat"]
+    assert data["truncated"] is False
+    only_world = client.get(url(server, "/search"), params={"q": "r.0", "path": "world"}).json()
+    assert [m["path"] for m in only_world["matches"]] == ["world/region/r.0.0.mca"]
+    assert client.get(url(server, "/search"), params={"q": "a"}).status_code == 422

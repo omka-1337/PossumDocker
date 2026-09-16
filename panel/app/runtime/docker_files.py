@@ -10,6 +10,7 @@ import asyncio
 import io
 import logging
 import posixpath
+import re
 import tarfile
 import tempfile
 import time
@@ -20,7 +21,16 @@ import aiodocker
 from aiodocker.exceptions import DockerError
 
 from app.runtime.docker import container_name, volume_name
-from app.runtime.files import MAX_TEXT_BYTES, FileEntry, FileError, Upload, resolve, validate_name
+from app.runtime.files import (
+    MAX_TEXT_BYTES,
+    SEARCH_LIMIT,
+    FileEntry,
+    FileError,
+    SearchMatch,
+    Upload,
+    resolve,
+    validate_name,
+)
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +172,25 @@ class DockerFiles:
         )  # fmt: skip
         entries = [_parse_stat_line(line) for line in out.decode(errors="replace").splitlines()]
         return [e for e in entries if e is not None]
+
+    async def search(self, server_id: str, path: str, query: str) -> tuple[list[SearchMatch], bool]:
+        await self._require(server_id, path, "dir")
+        pattern = "*" + re.sub(r"([*?\[\]\\])", r"\\\1", query) + "*"
+        out = await self._exec(
+            server_id, "find", _abs(path), "-mindepth", "1", "-iname", pattern,
+            "-exec", "stat", "-c", "%F|%s|%Y|%n", "{}", "+",
+        )  # fmt: skip
+        matches = []
+        for line in out.decode(errors="replace").splitlines():
+            entry = _parse_stat_line(line)
+            if entry is None:
+                continue
+            if len(matches) == SEARCH_LIMIT:
+                return matches, True
+            full = line.split("|", 3)[3]
+            relative = full[len(ROOT) + 1 :] if full.startswith(ROOT + "/") else full
+            matches.append(SearchMatch(path=relative, type=entry.type, size=entry.size, mtime=entry.mtime))
+        return matches, False
 
     # --- changes -------------------------------------------------------------
 

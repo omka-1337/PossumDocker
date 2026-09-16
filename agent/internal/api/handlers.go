@@ -258,6 +258,13 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 	s.fileCall(w, r, nil, func(id string) (any, error) { return s.files.List(r.Context(), id, r.URL.Query().Get("path")) })
 }
 
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	s.fileCall(w, r, nil, func(id string) (any, error) {
+		matches, truncated, err := s.files.Search(r.Context(), id, r.URL.Query().Get("path"), r.URL.Query().Get("q"))
+		return map[string]any{"matches": matches, "truncated": truncated}, err
+	})
+}
+
 func (s *Server) stat(w http.ResponseWriter, r *http.Request) {
 	id, ok := serverID(w, r)
 	if !ok {

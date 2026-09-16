@@ -8,7 +8,16 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from app.runtime.files import MAX_TEXT_BYTES, FileEntry, FileError, Upload, resolve, validate_name
+from app.runtime.files import (
+    MAX_TEXT_BYTES,
+    SEARCH_LIMIT,
+    FileEntry,
+    FileError,
+    SearchMatch,
+    Upload,
+    resolve,
+    validate_name,
+)
 
 
 class LocalFiles:
@@ -34,6 +43,20 @@ class LocalFiles:
         if not p.is_dir():
             raise FileError("not found", 404)
         return [self._entry(child) for child in p.iterdir()]
+
+    async def search(self, server_id, path, query):
+        base = self._path(server_id, "")
+        root = self._path(server_id, path)
+        if not root.is_dir():
+            raise FileError("not found", 404)
+        matches = []
+        for found in sorted(root.rglob("*")):
+            if query.lower() in found.name.lower():
+                if len(matches) == SEARCH_LIMIT:
+                    return matches, True
+                entry = self._entry(found)
+                matches.append(SearchMatch(str(found.relative_to(base)), entry.type, entry.size, entry.mtime))
+        return matches, False
 
     async def mkdir(self, server_id, path):
         p = self._path(server_id, path)

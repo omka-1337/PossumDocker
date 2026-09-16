@@ -1,4 +1,13 @@
-import { IconBan, IconChevronDown, IconDoorExit, IconLockOpen, IconRefresh, IconUserCircle } from '@tabler/icons-react'
+import {
+  IconBan,
+  IconChevronDown,
+  IconDoorExit,
+  IconLockOpen,
+  IconRefresh,
+  IconSearch,
+  IconUserCircle,
+  IconX,
+} from '@tabler/icons-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   avatarUrl,
@@ -28,12 +37,18 @@ export function PlayersTab({ server }: { server: Server }) {
   const actions = usePlayerActions(server.id)
   const [banning, setBanning] = useState<PlayerInfo | 'manual' | null>(null)
   const [note, setNote] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const running = server.status === 'running' || server.status === 'starting'
 
   if (isPending) return <p className="text-sm text-muted">loading…</p>
   if (isError) return <p className="text-sm text-red-400">{error.message}</p>
 
-  const { players, bans, bans_error: bansError, abilities } = data
+  const { players: everyone, bans: allBans, bans_error: bansError, abilities } = data
+  // By name, id (SteamID, UUID) or address, ignoring case.
+  const needle = query.trim().toLowerCase()
+  const matches = (...texts: (string | null)[]) => !needle || texts.some((t) => t?.toLowerCase().includes(needle))
+  const players = everyone.filter((p) => matches(p.name, p.game_id, p.ip))
+  const bans = allBans.filter((b) => matches(b.name, b.value, b.reason))
   const online = players.filter((p) => p.online)
   const offline = players.filter((p) => !p.online)
   const canBan = abilities.ban_by !== null || abilities.ip_bans
@@ -51,7 +66,7 @@ export function PlayersTab({ server }: { server: Server }) {
 
   // The bans that keep this player out: of them, and of their address.
   const bansOf = (player: PlayerInfo) =>
-    bans.filter((ban) =>
+    allBans.filter((ban) =>
       ban.kind === 'ip'
         ? ban.value === player.ip
         : abilities.bans_by_panel
@@ -91,7 +106,7 @@ export function PlayersTab({ server }: { server: Server }) {
     <div className="space-y-8 pb-10">
       <div className="flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm text-muted">
-          {online.length} online · {players.length} seen on this server
+          {everyone.filter((p) => p.online).length} online · {everyone.length} seen on this server
         </p>
         {abilities.refresh && (
           <Button
@@ -109,6 +124,23 @@ export function PlayersTab({ server }: { server: Server }) {
         )}
       </div>
 
+      <label className="flex h-10 items-center gap-2 rounded-xl bg-panel px-3 text-sm">
+        <IconSearch size={16} className="shrink-0 text-muted" />
+        <input
+          aria-label="search players"
+          placeholder="search by name, id or address"
+          className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setQuery('')}
+        />
+        {query && (
+          <button type="button" aria-label="clear search" className="text-muted hover:text-zinc-200" onClick={() => setQuery('')}>
+            <IconX size={15} />
+          </button>
+        )}
+      </label>
+
       {abilities.bans_by_panel && (
         <p className="rounded-xl bg-sky-950/40 px-3 py-2.5 text-sm text-sky-200">
           this game has no bans of its own: the panel kicks banned players as soon as they join, while it runs.
@@ -117,7 +149,10 @@ export function PlayersTab({ server }: { server: Server }) {
       {note && <p className="rounded-xl bg-sky-950/40 px-3 py-2.5 text-sm text-sky-200">{note}</p>}
       {actionError && <p className="text-sm text-red-400">{actionError.message}</p>}
 
-      <Section title="online" empty={running ? 'nobody is playing right now.' : 'the server is not running.'}>
+      <Section
+        title="online"
+        empty={needle ? 'no match.' : running ? 'nobody is playing right now.' : 'the server is not running.'}
+      >
         {online.map((player) => (
           <PlayerRow
             key={player.key}
@@ -142,7 +177,7 @@ export function PlayersTab({ server }: { server: Server }) {
         ))}
       </Section>
 
-      <Section title="offline" empty="nobody else yet.">
+      <Section title="offline" empty={needle ? 'no match.' : 'nobody else yet.'}>
         {offlineNotBanned.map((player) => (
           <PlayerRow
             key={player.key}
@@ -158,7 +193,7 @@ export function PlayersTab({ server }: { server: Server }) {
       </Section>
 
       {canBan && (
-        <Section title="banned" empty={bansError ? `couldn't read the ban list: ${bansError}` : 'nobody is banned.'}>
+        <Section title="banned" empty={bansError ? `couldn't read the ban list: ${bansError}` : needle ? 'no match.' : 'nobody is banned.'}>
           {bans.map((ban) => (
             <BanRow
               key={`${ban.kind}:${ban.value}`}

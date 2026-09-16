@@ -39,6 +39,29 @@ export function useListing(serverId: string, path: string) {
   })
 }
 
+export interface SearchMatch {
+  // Relative to the server's files: "world/region/r.0.0.mca"
+  path: string
+  type: FileEntry['type']
+  size: number
+  mtime: number
+}
+
+export interface SearchResults {
+  matches: SearchMatch[]
+  // More were found than returned
+  truncated: boolean
+}
+
+/** Names containing `query` in `path` and every folder under it. Only runs for a query of 2+ characters. */
+export function useFileSearch(serverId: string, path: string, query: string | null) {
+  return useQuery({
+    queryKey: [...filesKey(serverId), 'search', path, query],
+    queryFn: () => api<SearchResults>(`${base(serverId)}/search?${new URLSearchParams({ path, q: query ?? '' })}`),
+    enabled: query !== null && query.length >= 2,
+  })
+}
+
 const post = (url: string, body: unknown) => api<unknown>(url, { method: 'POST', body: JSON.stringify(body) })
 
 type Transfer = { sources: string[]; destination: string }

@@ -122,6 +122,12 @@ func (f *Files) helper(ctx context.Context, serverID string) (string, error) {
 	case !engine.IsNotFound(err):
 		return "", err
 	}
+	// Docker would quietly create a missing volume for the bind: never for a server that doesn't exist.
+	if exists, err := f.docker.VolumeExists(ctx, runtime.VolumeName(serverID)); err != nil {
+		return "", err
+	} else if !exists {
+		return "", newError(http.StatusNotFound, "this server has no files")
+	}
 
 	config := map[string]any{
 		"Image":  HelperImage,
@@ -255,6 +261,53 @@ func (t touchingWriter) Write(p []byte) (int, error) {
 
 var kinds = map[string]string{
 	"directory": "dir", "regular file": "file", "regular empty file": "file", "symbolic link": "symlink",
+}
+
+// SearchLimit is how many matches a search returns at most.
+const SearchLimit = 500
+
+// Match is a search result: an entry and where it is, relative to the volume.
+type Match struct {
+	Entry
+	Path string `json:"path"`
+}
+
+// globEscape makes a user's text match literally in find's -iname.
+func globEscape(text string) string {
+	var b strings.Builder
+	for _, r := range text {
+		if strings.ContainsRune(`*?[]\`, r) {
+			b.WriteRune('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// Search finds files and folders whose name contains query (ignoring case), anywhere under p.
+// Past SearchLimit matches the rest are left out and truncated is true.
+func (f *Files) Search(ctx context.Context, serverID, p, query string) (matches []Match, truncated bool, err error) {
+	if _, err := f.require(ctx, serverID, p, "dir"); err != nil {
+		return nil, false, err
+	}
+	out, err := f.run(ctx, serverID, "find", abs(p), "-mindepth", "1", "-iname", "*"+globEscape(query)+"*",
+		"-exec", "stat", "-c", "%F|%s|%Y|%n", "{}", "+")
+	if err != nil {
+		return nil, false, err
+	}
+	matches = []Match{}
+	for _, line := range strings.Split(string(out), "\n") {
+		entry, ok := parseStat(line)
+		if !ok {
+			continue
+		}
+		if len(matches) == SearchLimit {
+			return matches, true, nil
+		}
+		full := strings.SplitN(line, "|", 4)[3]
+		matches = append(matches, Match{Entry: entry, Path: strings.TrimPrefix(full, Root+"/")})
+	}
+	return matches, false, nil
 }
 
 // parseStat reads a "%F|%s|%Y|%n" line. The name comes last, so a "|" inside it is fine.

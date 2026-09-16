@@ -17,6 +17,8 @@ import {
   IconPencil,
   IconRefresh,
   IconScissors,
+  IconSearch,
+  IconX,
   IconSelectAll,
   IconServer2,
   IconTrash,
@@ -33,14 +35,18 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  baseName,
   downloadUrl,
   extension,
   joinPath,
   parentPath,
   uploadFiles,
   useFileActions,
+  useFileSearch,
   useListing,
   type FileEntry,
+  type SearchMatch,
+  type SearchResults,
   type UploadItem,
 } from '../../api/files'
 import { useStorage } from '../../api/queries'
@@ -49,6 +55,7 @@ import { formatSize } from '../../lib/format'
 import { useStoredState } from '../../lib/storage'
 import { Button, IconButton, Modal } from '../ui'
 import { ContextMenu, type MenuItem } from './ContextMenu'
+import { FileIcon } from './FileIcon'
 import { DetailsView, IconsView, type Sort, type SortKey } from './FileViews'
 import { TextEditor } from './TextEditor'
 
@@ -110,15 +117,23 @@ export function FileBrowser({ serverId }: { serverId: string }) {
   const dragging = useRef<{ dir: string; names: string[] } | null>(null)
   const uploadSeq = useRef(0)
 
+  // Typing filters this folder; Enter searches every folder under it.
+  const [filter, setFilter] = useState('')
+  const [searching, setSearching] = useState<string | null>(null)
+  const search = useFileSearch(serverId, path, searching)
+
   const entries = useMemo(() => {
-    const visible = (listing?.entries ?? []).filter((e) => showHidden || !e.name.startsWith('.'))
+    const needle = filter.trim().toLowerCase()
+    const visible = (listing?.entries ?? []).filter(
+      (e) => (showHidden || !e.name.startsWith('.')) && (!needle || e.name.toLowerCase().includes(needle)),
+    )
     const value = (e: FileEntry) => (sort.key === 'name' ? e.name.toLowerCase() : sort.key === 'size' ? e.size : e.mtime)
     return visible.sort((a, b) => {
       if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1 // folders first, always
       const [x, y] = [value(a), value(b)]
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir
     })
-  }, [listing, showHidden, sort])
+  }, [listing, showHidden, sort, filter])
 
   const selectedEntries = entries.filter((e) => selected.has(e.name))
   const fail = (e: Error) => setActionError(e.message)
@@ -127,6 +142,8 @@ export function FileBrowser({ serverId }: { serverId: string }) {
 
   const navigate = useCallback(
     (to: string) => {
+      setFilter('')
+      setSearching(null)
       if (to === path) return
       setBack((b) => [...b, path])
       setForward([])
@@ -454,6 +471,41 @@ export function FileBrowser({ serverId }: { serverId: string }) {
           })}
         </nav>
 
+        <label className="flex h-9 w-full items-center gap-1.5 rounded-lg bg-page px-2 text-sm sm:w-44 sm:shrink-0">
+          <IconSearch size={15} className="shrink-0 text-muted" />
+          <input
+            aria-label="search files"
+            placeholder="search"
+            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
+            value={filter}
+            title="type to filter this folder, Enter to search every folder under it"
+            onChange={(e) => {
+              setFilter(e.target.value)
+              setSearching(null)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && filter.trim().length >= 2) setSearching(filter.trim())
+              if (e.key === 'Escape') {
+                setFilter('')
+                setSearching(null)
+              }
+            }}
+          />
+          {filter && (
+            <button
+              type="button"
+              aria-label="clear search"
+              className="shrink-0 text-muted hover:text-zinc-200"
+              onClick={() => {
+                setFilter('')
+                setSearching(null)
+              }}
+            >
+              <IconX size={14} />
+            </button>
+          )}
+        </label>
+
         <IconButton onClick={() => setDialog('mkdir')} aria-label="new folder" title="new folder">
           <IconFolderPlus size={18} />
         </IconButton>
@@ -489,6 +541,25 @@ export function FileBrowser({ serverId }: { serverId: string }) {
             <Button onClick={() => navigate(path ? parentPath(path) : '')}>
               <IconArrowUp size={16} /> go to the parent folder
             </Button>
+          </div>
+        ) : searching !== null ? (
+          <SearchResultsList
+            query={searching}
+            results={search.data}
+            loading={search.isFetching}
+            error={search.error}
+            onPick={(match) => {
+              const parent = parentPath(match.path)
+              navigate(parent)
+              setSelected(new Set([baseName(match.path)]))
+            }}
+          />
+        ) : entries.length === 0 && listing && filter.trim() ? (
+          <div className="grid h-full place-items-center text-center text-sm text-muted">
+            <div>
+              <p>nothing in this folder matches &quot;{filter.trim()}&quot;</p>
+              <p className="mt-1 text-xs">press Enter to search every folder under it</p>
+            </div>
           </div>
         ) : entries.length === 0 && listing ? (
           <div className="grid h-full place-items-center text-center text-sm text-muted">
@@ -692,5 +763,56 @@ function StorageUsed({ serverId }: { serverId: string }) {
     <span className={`shrink-0 ${share >= 0.9 ? 'text-amber-300' : ''}`} title="disk space of this server">
       {formatSize(data.disk_used)} of {formatSize(data.disk_limit)}
     </span>
+  )
+}
+
+/** Everything under the folder whose name matches; a click opens the folder it's in, with it selected. */
+function SearchResultsList({
+  query,
+  results,
+  loading,
+  error,
+  onPick,
+}: {
+  query: string
+  results: SearchResults | undefined
+  loading: boolean
+  error: Error | null
+  onPick: (match: SearchMatch) => void
+}) {
+  if (error) return <p className="p-4 text-sm text-red-400">{error.message}</p>
+  if (!results) return <p className="p-4 text-sm text-muted">searching for &quot;{query}&quot;…</p>
+  if (results.matches.length === 0) {
+    return (
+      <div className="grid h-full place-items-center text-sm text-muted">nothing named like &quot;{query}&quot; here</div>
+    )
+  }
+  return (
+    <div className="p-1.5 text-sm">
+      <p className="px-2 pt-1 pb-2 text-xs text-muted">
+        {results.matches.length} found{results.truncated && ', showing the first ones: narrow the search'}
+        {loading && ' · updating…'}
+      </p>
+      <ul>
+        {results.matches.map((match) => {
+          const name = baseName(match.path)
+          const folder = parentPath(match.path)
+          return (
+            <li key={match.path}>
+              <button
+                type="button"
+                onClick={() => onPick(match)}
+                className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left hover:bg-zinc-50/5"
+              >
+                <FileIcon entry={{ name, type: match.type, size: match.size, mtime: match.mtime }} size={20} />
+                <span className="min-w-0 flex-1 truncate">{name}</span>
+                <span className="max-w-[50%] shrink truncate text-xs text-muted">{folder || '/'}</span>
+                {match.type !== 'dir' && <span className="w-16 shrink-0 text-right text-xs text-muted">{formatSize(match.size)}</span>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }

@@ -104,3 +104,9 @@ func TestLastNumber(t *testing.T) {
 		t.Error("garbage accepted")
 	}
 }
+
+func TestGlobEscape(t *testing.T) {
+	if got := globEscape(`a*b?[c]\d`); got != `a\*b\?\[c\]\\d` {
+		t.Errorf("globEscape = %q", got)
+	}
+}

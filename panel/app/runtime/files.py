@@ -30,6 +30,18 @@ class FileEntry:
 
 
 @dataclass(frozen=True)
+class SearchMatch:
+    # Relative to the volume, e.g. "world/region/r.0.0.mca"
+    path: str
+    type: Literal["file", "dir", "symlink", "other"]
+    size: int
+    mtime: int
+
+
+SEARCH_LIMIT = 500
+
+
+@dataclass(frozen=True)
 class Upload:
     # Relative to the upload's target directory; may contain folders ("world/level.dat").
     path: str
@@ -50,6 +62,8 @@ def validate_name(name: str) -> str:
 
 class Files(Protocol):
     async def list(self, server_id: str, path: str) -> list[FileEntry]: ...
+    # Names containing `query` (ignoring case) anywhere under `path`; True: more than SEARCH_LIMIT.
+    async def search(self, server_id: str, path: str, query: str) -> tuple[list[SearchMatch], bool]: ...
     async def mkdir(self, server_id: str, path: str) -> None: ...
     async def ensure_dirs(self, server_id: str, paths: list[str]) -> None: ...
     async def rename(self, server_id: str, path: str, new_name: str) -> None: ...

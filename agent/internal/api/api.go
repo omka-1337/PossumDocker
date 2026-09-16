@@ -56,6 +56,7 @@ func (s *Server) Handler() http.Handler {
 	// Files: the data volume, through the helper container.
 	api.HandleFunc("GET /v1/servers/{id}/files", s.list)
 	api.HandleFunc("GET /v1/servers/{id}/files/stat", s.stat)
+	api.HandleFunc("GET /v1/servers/{id}/files/search", s.search)
 	api.HandleFunc("POST /v1/servers/{id}/files/mkdir", s.mkdir)
 	api.HandleFunc("POST /v1/servers/{id}/files/ensure-dirs", s.ensureDirs)
 	api.HandleFunc("POST /v1/servers/{id}/files/rename", s.rename)

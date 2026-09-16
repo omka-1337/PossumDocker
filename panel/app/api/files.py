@@ -13,7 +13,7 @@ from app.api.servers import get_server_or_404
 from app.core.auth import allow
 from app.core.permissions import Permission
 from app.models import ServerState
-from app.runtime.files import FileEntry, FileError, Upload, resolve
+from app.runtime.files import FileEntry, FileError, SearchMatch, Upload, resolve
 from app.runtime.manager import StorageFull
 from app.runtime.state import RUNTIME_ERRORS
 
@@ -94,6 +94,28 @@ async def list_files(server_id: str, session: Session, manager: Manager, path: s
     # Folders first, then by name, case-insensitive: like every file manager.
     entries.sort(key=lambda e: (e.type != "dir", e.name.lower()))
     return Listing(path=resolve(path), entries=entries)
+
+
+class SearchResults(BaseModel):
+    matches: list[SearchMatch]
+    # There were more than these: narrow the search.
+    truncated: bool
+
+
+@router.get("/search")
+async def search_files(
+    server_id: str,
+    session: Session,
+    manager: Manager,
+    q: Annotated[str, Query(min_length=2, max_length=100)],
+    path: str = "",
+) -> SearchResults:
+    """Files and folders whose name contains `q`, in `path` and everything under it."""
+    files = await _files(server_id, session, manager)
+    async with errors:
+        matches, truncated = await files.search(server_id, path, q)
+    matches.sort(key=lambda m: (m.path.count("/"), m.path.lower()))
+    return SearchResults(matches=matches, truncated=truncated)
 
 
 @router.post("/mkdir", status_code=status.HTTP_204_NO_CONTENT)

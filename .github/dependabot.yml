@@ -38,8 +38,12 @@ updates:
     schedule:
       interval: weekly
 
+  # They only run CI: one pull request for all of them, major versions included.
   - package-ecosystem: github-actions
     directory: /
     target-branch: dev
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

@@ -364,3 +364,19 @@ def test_parse_docker_time():
     assert parse_docker_time("2026-09-16T19:00:00+02:00") == 1789578000.0
     with pytest.raises(ValueError):
         parse_docker_time("yesterday")
+
+
+def test_ports_move_with_what_they_follow():
+    from app.runtime.ports import PortError, move_ports
+
+    ports = [
+        Port(name="game", protocol="udp", default_host=2456),
+        Port(name="query", protocol="udp", default_host=2457, follows="game"),
+    ]
+    current = {"game": 2456, "query": 2457}
+    assert move_ports(ports, current, {"game": 3000}, set()) == {"game": 3000, "query": 3001}
+    with pytest.raises(PortError) as exc:
+        move_ports(ports, current, {"game": 3000}, {(3001, "udp")})
+    assert exc.value.errors == {"query": "3001/udp is used by another server"}
+    # Its own ports aren't in the way of itself.
+    assert move_ports(ports, current, {"game": 2456}, set()) == current

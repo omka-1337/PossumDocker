@@ -62,6 +62,8 @@ export interface Port {
   container: number | null
   protocol: 'tcp' | 'udp'
   default_host: number
+  // Keeps its distance from this port: moves with it
+  follows: string | null
 }
 
 export interface TemplateSummary {
@@ -158,6 +160,7 @@ export interface ServerUpdate {
   name?: string
   values?: FieldValues
   // Administrators only. null: back to the template's default, 0: no limit.
+  ports?: Record<string, number>
   memory_limit_mb?: number | null
   cpu_limit?: number | null
   disk_limit_mb?: number | null

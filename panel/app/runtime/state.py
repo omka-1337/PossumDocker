@@ -39,6 +39,20 @@ def parse_docker_time(text: str) -> float:
     return datetime.fromisoformat(whole + micro + ("+00:00" if zone == "Z" else zone)).timestamp()
 
 
+_PORT_IN_USE = re.compile(r"bind host port [^ ]*?:(\d+)/(tcp|udp): address already in use")
+
+
+def explain_runtime_error(exc: Exception) -> str | None:
+    """A plain explanation for Docker failures people can fix themselves; None for the rest."""
+    if match := _PORT_IN_USE.search(str(exc)):
+        port, protocol = match.groups()
+        return (
+            f"port {port}/{protocol} is already used by another program on this machine "
+            "(a game client, another server): stop it, or give this server another port in its settings"
+        )
+    return None
+
+
 try:
     from aiodocker.exceptions import DockerError
 except ImportError:  # no development runtime installed

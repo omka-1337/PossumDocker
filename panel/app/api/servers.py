@@ -13,9 +13,9 @@ from app.games.validation import ValuesError, public_values, validate_values
 from app.models import Server, ServerState
 from app.runtime.files import FileError
 from app.runtime.manager import ServerBusy, ServerStatus, StatusInfo
-from app.runtime.ports import allocate_ports
+from app.runtime.ports import PortError, allocate_ports, move_ports
 from app.runtime.spec import MIN_MEMORY_MB, default_disk_mb, default_limits, storage_limits
-from app.runtime.state import RUNTIME_ERRORS
+from app.runtime.state import RUNTIME_ERRORS, explain_runtime_error
 
 router = APIRouter(prefix="/servers", tags=["servers"])
 AdminOnly = Depends(require_admin)
@@ -84,6 +84,8 @@ class ServerUpdate(BaseModel):
     cpu_limit: float | None = Field(default=None, ge=0, le=1024)
     disk_limit_mb: int | None = DiskLimit
     backup_limit_mb: int | None = DiskLimit
+    # Administrators only: host ports by name. Ports that follow another move with it.
+    ports: dict[str, int] | None = None
 
 
 class ServerUpdateResult(BaseModel):
@@ -161,6 +163,34 @@ async def list_servers(
     return [to_read(s, templates, statuses[s.id]) for s in servers]
 
 
+async def _taken_ports(
+    session: Session, templates: Templates, manager: Manager, except_server: Server | None = None
+) -> set[tuple[int, str]]:
+    """Ports of other servers (even stopped ones, which don't bind them) and of other containers."""
+    rows = (await session.execute(select(Server.id, Server.ports, Server.template_id))).all()
+    taken = {
+        (host_port, port.protocol)
+        for server_id, ports, template_id in rows
+        if template_id in templates and (except_server is None or server_id != except_server.id)
+        for port in templates[template_id].ports
+        if (host_port := ports.get(port.name)) is not None
+    }
+    published = getattr(manager.runtime, "published_ports", None)
+    if published:
+        try:
+            own = set()
+            if except_server:
+                template = templates.get(except_server.template_id)
+                own = {
+                    (except_server.ports.get(p.name), p.protocol)
+                    for p in (template.ports if template else [])
+                }
+            taken |= await published() - own  # e.g. another app's container already on 25565
+        except RUNTIME_ERRORS:
+            pass
+    return taken
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[AdminOnly])
 async def create_server(
     body: ServerCreate, session: Session, templates: Templates, providers: Providers, manager: Manager
@@ -174,21 +204,7 @@ async def create_server(
         # Keyed by field id so the form can show each message under its input.
         raise HTTPException(422, {"errors": exc.errors}) from exc
 
-    # Ports of other servers count as taken even while they are stopped and not bound.
-    rows = (await session.execute(select(Server.ports, Server.template_id))).all()
-    taken = {
-        (host_port, port.protocol)
-        for ports, template_id in rows
-        if template_id in templates
-        for port in templates[template_id].ports
-        if (host_port := ports.get(port.name)) is not None
-    }
-    published = getattr(manager.runtime, "published_ports", None)
-    if published:
-        try:
-            taken |= await published()  # e.g. another app's container already on 25565
-        except RUNTIME_ERRORS:
-            pass
+    taken = await _taken_ports(session, templates, manager)
     try:
         ports = allocate_ports(template.ports, taken)
     except RuntimeError as exc:
@@ -230,6 +246,19 @@ async def update_server(
     limit_keys = body.model_fields_set & {"memory_limit_mb", "cpu_limit", "disk_limit_mb", "backup_limit_mb"}
     if limit_keys and not user.is_admin:
         raise HTTPException(403, "only administrators can change resource limits")
+    new_ports = None
+    if body.ports is not None:
+        if not user.is_admin:
+            raise HTTPException(403, "only administrators can change ports")
+        try:
+            new_ports = move_ports(
+                template.ports,
+                server.ports,
+                body.ports,
+                await _taken_ports(session, templates, manager, except_server=server),
+            )
+        except PortError as exc:
+            raise HTTPException(422, {"errors": {f"port.{k}": v for k, v in exc.errors.items()}}) from exc
     if limit_errors := _limit_errors(body):
         raise HTTPException(422, {"errors": limit_errors})
 
@@ -275,6 +304,9 @@ async def update_server(
         manager.disk_errors.pop(server.id, None)
     if "backup_limit_mb" in limit_keys:
         server.backup_limit_mb = body.backup_limit_mb
+    ports_changed = new_ports is not None and new_ports != server.ports
+    if ports_changed:
+        server.ports = new_ports
     await session.commit()
 
     reinstalling = "reinstall" in effects
@@ -282,7 +314,7 @@ async def update_server(
         await manager.install(server)
     return ServerUpdateResult(
         server=await read_one(server, templates, manager),
-        restart_required=running and ("restart" in effects or limits_changed),
+        restart_required=running and ("restart" in effects or limits_changed or ports_changed),
         reinstalling=reinstalling,
     )
 
@@ -321,6 +353,8 @@ async def _run(action, server: Server) -> None:
     except ServerBusy as exc:
         raise HTTPException(409, str(exc)) from exc
     except RUNTIME_ERRORS as exc:
+        if explanation := explain_runtime_error(exc):
+            raise HTTPException(409, explanation) from exc
         raise HTTPException(503, f"docker: {exc}") from exc
 
 

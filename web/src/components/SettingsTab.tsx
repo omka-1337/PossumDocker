@@ -45,6 +45,17 @@ export function SettingsTab({ server, isAdmin }: { server: Server; isAdmin: bool
         )}
       </Section>
 
+      {isAdmin && template && template.ports.length > 0 && (
+        <Section title="ports">
+          <PortsEditor
+            key={JSON.stringify(server.ports)}
+            server={server}
+            template={template}
+            onRestartNeeded={() => setRestartNeeded(true)}
+          />
+        </Section>
+      )}
+
       {isAdmin && (
         <Section title="resources">
           <ResourceLimits
@@ -86,6 +97,95 @@ const asText = (value: number | null) => (value === null ? '' : String(value))
 const fromText = (text: string) => (text.trim() === '' ? null : Number(text))
 
 /** Memory and CPU caps for the container. Only administrators see and change these. */
+/** Host ports players connect to. A port that follows another moves with it (Valheim's query port). */
+function PortsEditor({
+  server,
+  template,
+  onRestartNeeded,
+}: {
+  server: Server
+  template: TemplateDetail
+  onRestartNeeded: () => void
+}) {
+  const leaders = template.ports.filter((p) => !p.follows)
+  const [texts, setTexts] = useState(() =>
+    Object.fromEntries(leaders.map((p) => [p.name, String(server.ports[p.name] ?? p.default_host)])),
+  )
+  const update = useUpdateServer(server.id)
+  const fieldErrors = update.error instanceof ApiError ? update.error.fieldErrors : {}
+  const changed = leaders.filter((p) => texts[p.name] !== String(server.ports[p.name]))
+  const invalid = changed.some((p) => !/^\d{1,5}$/.test(texts[p.name]))
+
+  // Where a follower lands: the same distance from its leader as in the template.
+  const preview = (name: string): number | null => {
+    const port = template.ports.find((p) => p.name === name)!
+    if (!port.follows) return Number(texts[name])
+    const leader = template.ports.find((p) => p.name === port.follows)!
+    const base = preview(leader.name)
+    return base === null ? null : base + (port.default_host - leader.default_host)
+  }
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    update.mutate(
+      { ports: Object.fromEntries(changed.map((p) => [p.name, Number(texts[p.name])])) },
+      { onSuccess: (result) => result.restart_required && onRestartNeeded() },
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-5">
+      <p className="text-sm text-muted">
+        the ports players connect to. change one if another program on this machine already uses it.
+      </p>
+      <div className="grid gap-5 sm:grid-cols-2">
+        {template.ports.map((port) => (
+          <div key={port.name}>
+            <label htmlFor={`port-${port.name}`} className="mb-1.5 block text-sm font-medium">
+              {port.name} ({port.protocol})
+            </label>
+            {port.follows ? (
+              <p id={`port-${port.name}`} className="py-2.5 text-sm text-muted">
+                {preview(port.name)} — moves with {port.follows}
+              </p>
+            ) : (
+              <input
+                id={`port-${port.name}`}
+                type="number"
+                min={1}
+                max={65535}
+                className={inputClass}
+                value={texts[port.name]}
+                onChange={(e) => setTexts((prev) => ({ ...prev, [port.name]: e.target.value }))}
+              />
+            )}
+            <FieldError error={fieldErrors[`port.${port.name}`]} />
+          </div>
+        ))}
+      </div>
+      {update.error && Object.keys(fieldErrors).length === 0 && (
+        <p className="text-sm text-red-400">{update.error.message}</p>
+      )}
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary" disabled={changed.length === 0 || invalid || update.isPending}>
+          {update.isPending ? 'saving…' : 'save'}
+        </Button>
+        {changed.length > 0 && (
+          <Button
+            type="button"
+            onClick={() => {
+              setTexts(Object.fromEntries(leaders.map((p) => [p.name, String(server.ports[p.name])])))
+              update.reset()
+            }}
+          >
+            discard
+          </Button>
+        )}
+      </div>
+    </form>
+  )
+}
+
 type LimitKey = 'memory_limit_mb' | 'cpu_limit' | 'disk_limit_mb' | 'backup_limit_mb'
 
 interface LimitInput {

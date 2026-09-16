@@ -257,3 +257,42 @@ def test_only_administrators_change_limits(client):
     url = f"/api/servers/{server['id']}"
     assert client.patch(url, json={"memory_limit_mb": 0}).status_code == 403
     assert client.patch(url, json={"name": "Renamed"}).status_code == 200
+
+
+def test_change_ports(client, runtime):
+    valheim = create_installed(client, "valheim", password="secret123")
+    cs = create_installed(client, "cs16")
+    url = f"/api/servers/{valheim['id']}"
+
+    resp = client.patch(url, json={"ports": {"game": 3456}})
+    assert resp.status_code == 200, resp.text
+    # The query port follows the game port.
+    assert resp.json()["server"]["ports"] == {"game": 3456, "query": 3457}
+    assert client.post(f"{url}/start").status_code == 200
+    assert runtime.specs[valheim["id"]].env["SERVER_PORT"] == "3456"
+
+    errors = client.patch(url, json={"ports": {"query": 4000}}).json()["detail"]["errors"]
+    assert errors == {"port.query": "moves with game"}
+    # The query port would land on udp 27015, the CS server's.
+    errors = client.patch(url, json={"ports": {"game": cs["ports"]["game"] - 1}}).json()["detail"]["errors"]
+    assert errors == {"port.query": "27015/udp is used by another server"}
+    assert client.patch(url, json={"ports": {"game": 70000}}).status_code == 422
+    assert client.patch(url, json={"ports": {"game": 3500}}).json()["restart_required"] is True
+
+
+def test_a_port_taken_by_another_program_is_explained(client, runtime, monkeypatch):
+    from app.runtime.state import RuntimeUnavailable
+
+    server = create_installed(client, "cs16")
+
+    async def start(server_id):
+        raise RuntimeUnavailable(
+            "docker: failed to set up container networking: driver failed programming external connectivity"
+            " on endpoint possum-x (81a2):"
+            " failed to bind host port 0.0.0.0:27015/udp: address already in use (500)"
+        )
+
+    monkeypatch.setattr(runtime, "start", start)
+    resp = client.post(f"/api/servers/{server['id']}/start")
+    assert resp.status_code == 409
+    assert resp.json()["detail"].startswith("port 27015/udp is already used by another program")

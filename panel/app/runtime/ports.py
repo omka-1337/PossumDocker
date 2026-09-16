@@ -47,6 +47,43 @@ def allocate_ports(
     return result
 
 
+class PortError(ValueError):
+    def __init__(self, errors: dict[str, str]):
+        super().__init__(errors)
+        self.errors = errors
+
+
+def move_ports(
+    ports: list[Port], current: dict[str, int], requested: dict[str, int], taken: set[tuple[int, str]]
+) -> dict[str, int]:
+    """New host ports for a server: `requested` sets the ports others follow, and those that follow
+    move along at their usual distance. `taken`: ports of other servers and containers."""
+    by_name = {p.name: p for p in ports}
+    errors: dict[str, str] = {}
+    for name in requested:
+        if name not in by_name:
+            errors[name] = "no such port"
+        elif by_name[name].follows:
+            errors[name] = f"moves with {by_name[name].follows}"
+    result = dict(current)
+    for port in ports:
+        root = _root(port, by_name)
+        if root.name in requested and root.name not in errors:
+            base = requested[root.name]
+            result[port.name] = base + (port.default_host - root.default_host)
+    for port in ports:
+        number = result.get(port.name)
+        if port.name in errors or number is None:
+            continue
+        if not 1 <= number <= 65535:
+            errors[port.name] = "must be between 1 and 65535"
+        elif number != current.get(port.name) and (number, port.protocol) in taken:
+            errors[port.name] = f"{number}/{port.protocol} is used by another server"
+    if errors:
+        raise PortError(errors)
+    return result
+
+
 def _root(port: Port, by_name: dict[str, Port]) -> Port:
     while port.follows:
         port = by_name[port.follows]

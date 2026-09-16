@@ -44,6 +44,9 @@ Behind a reverse proxy (nginx, Caddy), add its address to `.env`, e.g. `POSSUM_T
 the panel then trusts its `X-Forwarded-For`/`X-Forwarded-Proto` headers, so login throttling sees visitors' real
 addresses and the session cookie is marked secure on HTTPS.
 
+Before exposing the panel to the internet, read [SECURITY.md](SECURITY.md): use HTTPS, and only make people
+administrators you would trust with the machine.
+
 ## Development
 
 ### Panel

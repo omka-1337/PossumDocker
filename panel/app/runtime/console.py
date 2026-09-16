@@ -3,7 +3,7 @@ import time
 from collections.abc import AsyncIterator
 from typing import Protocol
 
-from app.runtime.docker import ContainerState
+from app.runtime.state import ContainerState
 
 HISTORY_LINES = 300
 POLL_SECONDS = 1.0

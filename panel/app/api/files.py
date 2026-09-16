@@ -3,7 +3,6 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 from urllib.parse import quote
 
-from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -14,9 +13,9 @@ from app.api.servers import get_server_or_404
 from app.core.auth import allow
 from app.core.permissions import Permission
 from app.models import ServerState
-from app.runtime.docker import RuntimeUnavailable
 from app.runtime.files import FileEntry, FileError, Upload, resolve
 from app.runtime.manager import StorageFull
+from app.runtime.state import RUNTIME_ERRORS
 
 router = APIRouter(
     prefix="/servers/{server_id}/files", tags=["files"], dependencies=[allow(Permission.FILES)]
@@ -79,7 +78,7 @@ class _Errors:
             raise HTTPException(exc.status, str(exc)) from exc
         if isinstance(exc, StorageFull):
             raise HTTPException(507, str(exc)) from exc
-        if isinstance(exc, RuntimeUnavailable | DockerError):
+        if isinstance(exc, RUNTIME_ERRORS):
             raise HTTPException(503, f"docker: {exc}") from exc
         return False
 

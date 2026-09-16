@@ -1,4 +1,3 @@
-from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -8,8 +7,8 @@ from app.core.auth import allow
 from app.core.permissions import Permission
 from app.games.configs import ConfigDocument, ConfigValuesError, validate_config_values
 from app.games.schema import ConfigFile, ConfigHint
-from app.runtime.docker import RuntimeUnavailable
 from app.runtime.manager import ServerBusy
+from app.runtime.state import RUNTIME_ERRORS
 
 router = APIRouter(
     prefix="/servers/{server_id}/configs", tags=["configs"], dependencies=[allow(Permission.SETTINGS)]
@@ -92,7 +91,7 @@ async def get_config(
     server, config = await _load(server_id, config_id, session, templates)
     try:
         return to_read(config, await manager.read_config(server, config))
-    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError) as exc:
+    except (ServerBusy, *RUNTIME_ERRORS, ValueError) as exc:
         raise _docker_errors(exc) from exc
 
 
@@ -113,5 +112,5 @@ async def update_config(
         raise HTTPException(422, {"errors": exc.errors}) from exc
     try:
         return to_read(config, await manager.write_config(server, config, values))
-    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError, ConfigValuesError) as exc:
+    except (ServerBusy, *RUNTIME_ERRORS, ValueError, ConfigValuesError) as exc:
         raise _docker_errors(exc) from exc

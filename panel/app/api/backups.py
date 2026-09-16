@@ -2,7 +2,6 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 
-from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -13,8 +12,8 @@ from app.api.servers import get_server_or_404
 from app.core.auth import allow
 from app.core.permissions import Permission
 from app.models import Backup, BackupStatus
-from app.runtime.docker import RuntimeUnavailable
 from app.runtime.manager import ServerBusy, StorageFull
+from app.runtime.state import RUNTIME_ERRORS
 
 router = APIRouter(prefix="/servers/{server_id}/backups", tags=["backups"])
 
@@ -87,7 +86,7 @@ async def create_backup(server_id: str, body: BackupCreate, session: Session, ma
     note = body.note.strip() if body.note and body.note.strip() else None
     try:
         return to_read(await manager.create_backup(server, note=note))
-    except (ServerBusy, RuntimeUnavailable, DockerError) as exc:
+    except (ServerBusy, *RUNTIME_ERRORS) as exc:
         raise _conflict(exc) from exc
 
 
@@ -102,7 +101,7 @@ async def restore_backup(server_id: str, backup_id: str, session: Session, manag
         raise HTTPException(410, "the backup file is missing from the panel's disk")
     try:
         await manager.restore_backup(server, backup)
-    except (ServerBusy, RuntimeUnavailable, DockerError) as exc:
+    except (ServerBusy, *RUNTIME_ERRORS) as exc:
         raise _conflict(exc) from exc
 
 

@@ -17,9 +17,9 @@ from pathlib import Path
 
 import httpx
 
-from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
 from app.runtime.files import FileEntry, FileError, Upload, resolve, validate_name
 from app.runtime.spec import ContainerSpec
+from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
 
 
 class AgentError(RuntimeUnavailable):

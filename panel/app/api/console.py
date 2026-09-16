@@ -2,7 +2,6 @@ import asyncio
 import logging
 from urllib.parse import urlsplit
 
-from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, ValidationError
 
@@ -11,6 +10,7 @@ from app.core.permissions import Permission
 from app.models import Server
 from app.runtime.console import follow_console
 from app.runtime.manager import ServerBusy, ServerManager, ServerStatus
+from app.runtime.state import RUNTIME_ERRORS
 
 log = logging.getLogger(__name__)
 
@@ -99,5 +99,5 @@ async def _run_command(websocket: WebSocket, manager: ServerManager, server: Ser
         await manager.send_command(server, command)
     except ServerBusy as exc:
         await websocket.send_json({"type": "error", "data": str(exc)})
-    except DockerError as exc:
+    except RUNTIME_ERRORS as exc:
         await websocket.send_json({"type": "error", "data": f"docker: {exc}"})

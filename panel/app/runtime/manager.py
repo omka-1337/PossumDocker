@@ -17,9 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.games.configs import ConfigDocument, validate_config_values
 from app.games.schema import ConfigFile, Template
 from app.models import Backup, BackupStatus, Server, ServerState
-from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
 from app.runtime.files import Files
 from app.runtime.spec import ContainerSpec, build_spec, storage_limits
+from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
 
 log = logging.getLogger(__name__)
 

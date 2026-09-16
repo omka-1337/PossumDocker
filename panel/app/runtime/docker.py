@@ -12,38 +12,22 @@ import posixpath
 import re
 import tarfile
 import time
-from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
-from typing import Literal
+from collections.abc import AsyncIterator
 
 import aiodocker
 import aiohttp
 from aiodocker.exceptions import DockerError
 
 from app.runtime.spec import ContainerSpec
+from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
+
+__all__ = ["ContainerState", "DockerRuntime", "LogFn", "RuntimeUnavailable", "host_limits"]
 
 log = logging.getLogger(__name__)
 
 LABEL_MANAGED = "possum.managed"
 LABEL_SERVER = "possum.server_id"
 LABEL_ROLE = "possum.role"
-
-LogFn = Callable[[str], None]
-
-
-class RuntimeUnavailable(Exception):
-    """Docker can't be reached (not running, no access to the socket...)."""
-
-
-@dataclass(frozen=True)
-class ContainerState:
-    status: Literal["created", "running", "paused", "restarting", "removing", "exited", "dead"]
-    # "starting" | "healthy" | "unhealthy" when the image has a healthcheck, else None.
-    health: str | None = None
-    # How the last run ended, once it has.
-    exit_code: int | None = None
-    oom_killed: bool = False
-
 
 RESTART_ATTEMPTS = 3
 PIDS_LIMIT = 4096

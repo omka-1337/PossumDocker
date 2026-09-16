@@ -1,7 +1,6 @@
 from datetime import datetime
 from typing import Any
 
-from aiodocker.exceptions import DockerError
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -12,11 +11,11 @@ from app.core.permissions import Permission
 from app.games.schema import Template
 from app.games.validation import ValuesError, public_values, validate_values
 from app.models import Server, ServerState
-from app.runtime.docker import RuntimeUnavailable
 from app.runtime.files import FileError
 from app.runtime.manager import ServerBusy, ServerStatus, StatusInfo
 from app.runtime.ports import allocate_ports
 from app.runtime.spec import MIN_MEMORY_MB, default_disk_mb, default_limits, storage_limits
+from app.runtime.state import RUNTIME_ERRORS
 
 router = APIRouter(prefix="/servers", tags=["servers"])
 AdminOnly = Depends(require_admin)
@@ -188,7 +187,7 @@ async def create_server(
     if published:
         try:
             taken |= await published()  # e.g. another app's container already on 25565
-        except (RuntimeUnavailable, DockerError):
+        except RUNTIME_ERRORS:
             pass
     try:
         ports = allocate_ports(template.ports, taken)
@@ -300,7 +299,7 @@ async def get_storage(server_id: str, session: Session, manager: Manager) -> Sto
     if server.state == ServerState.INSTALLED:
         try:
             disk_used = await manager.disk_usage(server)
-        except (FileError, RuntimeUnavailable, DockerError) as exc:
+        except (FileError, *RUNTIME_ERRORS) as exc:
             raise HTTPException(503, f"could not measure the server: {exc}") from exc
     return StorageRead(
         disk_used=disk_used,
@@ -321,7 +320,7 @@ async def _run(action, server: Server) -> None:
         await action(server)
     except ServerBusy as exc:
         raise HTTPException(409, str(exc)) from exc
-    except (RuntimeUnavailable, DockerError) as exc:
+    except RUNTIME_ERRORS as exc:
         raise HTTPException(503, f"docker: {exc}") from exc
 
 
@@ -374,7 +373,7 @@ async def send_command(server_id: str, body: CommandBody, session: Session, mana
         await manager.send_command(server, body.command)
     except ServerBusy as exc:
         raise HTTPException(409, str(exc)) from exc
-    except (RuntimeUnavailable, DockerError) as exc:
+    except RUNTIME_ERRORS as exc:
         raise HTTPException(503, f"docker: {exc}") from exc
 
 
@@ -384,7 +383,7 @@ async def delete_server(server_id: str, session: Session, manager: Manager) -> N
     try:
         # Containers and the data volume go with it: the UI asks for confirmation.
         await manager.delete(server)
-    except (RuntimeUnavailable, DockerError) as exc:
+    except RUNTIME_ERRORS as exc:
         raise HTTPException(503, f"docker: {exc}") from exc
     await session.delete(server)
     await session.commit()

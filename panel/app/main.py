@@ -14,7 +14,6 @@ from app.games.art import ArtCache
 from app.games.providers import OptionsProviders, default_providers
 from app.games.registry import load_templates
 from app.runtime.agent import AgentRuntime
-from app.runtime.docker import DockerRuntime
 from app.runtime.manager import Runtime, ServerManager
 from app.runtime.scheduler import Scheduler, resolve_timezone
 
@@ -41,6 +40,8 @@ def create_app(
             logging.getLogger(__name__).warning(
                 "no POSSUM_AGENT_URL: talking to Docker directly (development only)"
             )
+            from app.runtime.docker import DockerRuntime  # needs aiodocker: development only
+
             docker = DockerRuntime()
 
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:

@@ -380,3 +380,11 @@ def test_ports_move_with_what_they_follow():
     assert exc.value.errors == {"query": "3001/udp is used by another server"}
     # Its own ports aren't in the way of itself.
     assert move_ports(ports, current, {"game": 2456}, set()) == current
+
+
+def test_counter_strike_listens_on_the_port_players_use():
+    server = Server(id="abc", name="cs", template_id="cs16", ports={"game": 27030})
+    server.values = {"map": "de_dust2", "max_players": 16, "vac": True, "rcon_password": "x" * 24}
+    spec = build_spec(load_template("cs16"), server, TEMPLATES_DIR).runtime
+    assert spec.ports == [PortBinding(host=27030, container=27030, protocol="udp")]
+    assert spec.command[spec.command.index("-port") + 1] == "27030"

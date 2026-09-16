@@ -38,7 +38,9 @@ fields:
     hidden: true
 
 ports:
-  - { name: game, container: 27015, protocol: udp, default_host: 27015 }
+  # No container port: HLDS tells Steam and the server browser the port it listens on, so it listens on
+  # the one players use.
+  - { name: game, protocol: udp, default_host: 27015 }
 
 install:
   image: steamcmd/steamcmd:latest
@@ -54,7 +56,7 @@ runtime:
     - -game
     - cstrike
     - -port
-    - "27015"
+    - "{{ ports.game }}"
     - +map
     - "{{ map }}"
     - +maxplayers

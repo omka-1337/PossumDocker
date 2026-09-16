@@ -167,7 +167,8 @@ func (s *Server) logs(w http.ResponseWriter, r *http.Request) {
 	out := flushingWriter{w, http.NewResponseController(w)}
 	tail := cleanTail(r.URL.Query().Get("tail"))
 	since := atoiDefault(r.URL.Query().Get("since"), 0)
-	err := s.runtime.Logs(r.Context(), id, tail, since, func(line string) { io.WriteString(out, line+"\n") }) //nolint:errcheck
+	timestamps := r.URL.Query().Get("timestamps") == "true"
+	err := s.runtime.Logs(r.Context(), id, tail, since, timestamps, func(line string) { io.WriteString(out, line+"\n") }) //nolint:errcheck
 	if err != nil && r.Context().Err() == nil {
 		s.log.Warn("log stream ended", "server", id, "err", err)
 		abort()

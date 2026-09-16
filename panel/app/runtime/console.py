@@ -11,7 +11,9 @@ POLL_SECONDS = 1.0
 
 class LogSource(Protocol):
     async def state(self, server_id: str) -> ContainerState | None: ...
-    def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]: ...
+    def logs(
+        self, server_id: str, tail: int | None = 200, since: int = 0, timestamps: bool = False
+    ) -> AsyncIterator[str]: ...
 
 
 async def follow_console(runtime: LogSource, server_id: str) -> AsyncIterator[str]:

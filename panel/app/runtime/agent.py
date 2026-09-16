@@ -19,7 +19,7 @@ import httpx
 
 from app.runtime.files import FileEntry, FileError, Upload, resolve, validate_name
 from app.runtime.spec import ContainerSpec
-from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
+from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable, parse_docker_time
 
 
 class AgentError(RuntimeUnavailable):
@@ -32,6 +32,7 @@ def _state(data: dict) -> ContainerState:
         health=data.get("health"),
         exit_code=data.get("exit_code"),
         oom_killed=data.get("oom_killed", False),
+        started_at=parse_docker_time(data["started_at"]) if data.get("started_at") else None,
     )
 
 
@@ -174,8 +175,12 @@ class AgentRuntime:
             "PUT", f"/v1/servers/{server_id}/container-file", params={"path": path}, content=data
         )
 
-    async def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]:
+    async def logs(
+        self, server_id: str, tail: int | None = 200, since: int = 0, timestamps: bool = False
+    ) -> AsyncIterator[str]:
         params = {"tail": "all" if tail is None else str(tail), "since": str(since)}
+        if timestamps:
+            params["timestamps"] = "true"
         try:
             async with self.agent.http.stream("GET", f"/v1/servers/{server_id}/logs", params=params) as resp:
                 await self.agent.raise_for_status(resp)

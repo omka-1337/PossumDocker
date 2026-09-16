@@ -32,6 +32,7 @@ type ContainerInfo struct {
 	State struct {
 		Status    string `json:"Status"`
 		Running   bool   `json:"Running"`
+		StartedAt string `json:"StartedAt"`
 		ExitCode  int    `json:"ExitCode"`
 		OOMKilled bool   `json:"OOMKilled"`
 		Health    *struct {
@@ -103,13 +104,15 @@ func (c *Client) ContainerWait(ctx context.Context, name string) (int, error) {
 }
 
 // ContainerLogs returns the multiplexed log stream (see Demux). With follow it ends when the container stops.
-func (c *Client) ContainerLogs(ctx context.Context, name string, follow bool, tail string, since int64) (io.ReadCloser, error) {
+// With timestamps every line starts with the time Docker received it (RFC 3339) and a space.
+func (c *Client) ContainerLogs(ctx context.Context, name string, follow bool, tail string, since int64, timestamps bool) (io.ReadCloser, error) {
 	query := url.Values{
-		"stdout": {"true"},
-		"stderr": {"true"},
-		"follow": {strconv.FormatBool(follow)},
-		"tail":   {tail},
-		"since":  {strconv.FormatInt(since, 10)},
+		"stdout":     {"true"},
+		"stderr":     {"true"},
+		"follow":     {strconv.FormatBool(follow)},
+		"tail":       {tail},
+		"since":      {strconv.FormatInt(since, 10)},
+		"timestamps": {strconv.FormatBool(timestamps)},
 	}
 	resp, err := c.do(ctx, http.MethodGet, "/containers/"+url.PathEscape(name)+"/logs", query, nil, "")
 	if err != nil {

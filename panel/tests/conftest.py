@@ -75,11 +75,11 @@ class FakeRuntime:
     async def write_file(self, server_id, path, data):
         self.config_files[(server_id, path)] = data
 
-    async def logs(self, server_id, tail=200, since=0):
+    async def logs(self, server_id, tail=200, since=0, timestamps=False):
         if since:  # like Docker: nothing newer than the previous stream
             return
         for line in self.log_lines.get(server_id, []):
-            yield line
+            yield f"2026-09-16T12:00:00.000000000Z {line}" if timestamps else line
 
     async def remove(self, server_id):
         self.containers.pop(server_id, None)

@@ -104,6 +104,8 @@ type State struct {
 	// How the last run ended, once it has.
 	ExitCode  *int `json:"exit_code,omitempty"`
 	OOMKilled bool `json:"oom_killed,omitempty"`
+	// When the container last started (RFC 3339); only from State, not from States.
+	StartedAt string `json:"started_at,omitempty"`
 }
 
 const (
@@ -194,6 +196,9 @@ func (r *Runtime) State(ctx context.Context, serverID string) (*State, error) {
 		return nil, err
 	}
 	state := &State{Status: info.State.Status}
+	if !strings.HasPrefix(info.State.StartedAt, "0001-") { // never started
+		state.StartedAt = info.State.StartedAt
+	}
 	if info.State.Health != nil {
 		state.Health = info.State.Health.Status
 	}
@@ -276,7 +281,7 @@ func (r *Runtime) RunInstall(ctx context.Context, serverID string, spec Containe
 	if err := r.docker.ContainerStart(ctx, name); err != nil {
 		return err
 	}
-	if err := r.followLines(ctx, name, "all", 0, logLine); err != nil {
+	if err := r.followLines(ctx, name, "all", 0, false, logLine); err != nil {
 		return err
 	}
 	code, err := r.docker.ContainerWait(ctx, name)
@@ -399,16 +404,17 @@ func (r *Runtime) SendCommand(ctx context.Context, serverID, line string) error 
 }
 
 // Logs streams console lines until the container stops. Nothing (and no error) if it doesn't exist.
-func (r *Runtime) Logs(ctx context.Context, serverID, tail string, since int64, line func(string)) error {
-	err := r.followLines(ctx, ContainerName(serverID), tail, since, line)
+// With timestamps each line starts with Docker's RFC 3339 time and a space.
+func (r *Runtime) Logs(ctx context.Context, serverID, tail string, since int64, timestamps bool, line func(string)) error {
+	err := r.followLines(ctx, ContainerName(serverID), tail, since, timestamps, line)
 	if engine.IsNotFound(err) {
 		return nil
 	}
 	return err
 }
 
-func (r *Runtime) followLines(ctx context.Context, name, tail string, since int64, line func(string)) error {
-	body, err := r.docker.ContainerLogs(ctx, name, true, tail, since)
+func (r *Runtime) followLines(ctx context.Context, name, tail string, since int64, timestamps bool, line func(string)) error {
+	body, err := r.docker.ContainerLogs(ctx, name, true, tail, since, timestamps)
 	if err != nil {
 		return err
 	}

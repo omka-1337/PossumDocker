@@ -4,8 +4,10 @@ Kept apart from app.runtime.docker, which needs aiodocker: an installation that 
 (every real one) doesn't have to install it.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 LogFn = Callable[[str], None]
@@ -23,6 +25,18 @@ class ContainerState:
     # How the last run ended, once it has.
     exit_code: int | None = None
     oom_killed: bool = False
+    # When the container last started (unix seconds); only from a single server's state.
+    started_at: float | None = None
+
+
+def parse_docker_time(text: str) -> float:
+    """Docker's RFC 3339 times with nanoseconds ("2026-09-16T17:00:00.123456789Z") as unix seconds."""
+    match = re.fullmatch(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?(Z|[+-]\d\d:\d\d)", text.strip())
+    if not match:
+        raise ValueError(f"not a Docker time: {text!r}")
+    whole, fraction, zone = match.groups()
+    micro = f".{fraction[:6]}" if fraction else ""
+    return datetime.fromisoformat(whole + micro + ("+00:00" if zone == "Z" else zone)).timestamp()
 
 
 try:

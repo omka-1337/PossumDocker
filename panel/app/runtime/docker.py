@@ -19,7 +19,7 @@ import aiohttp
 from aiodocker.exceptions import DockerError
 
 from app.runtime.spec import ContainerSpec
-from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
+from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable, parse_docker_time
 
 __all__ = ["ContainerState", "DockerRuntime", "LogFn", "RuntimeUnavailable", "host_limits"]
 
@@ -141,6 +141,11 @@ class DockerRuntime:
             health=(state.get("Health") or {}).get("Status"),
             exit_code=state.get("ExitCode") if state["Status"] in ("exited", "dead") else None,
             oom_killed=bool(state.get("OOMKilled")),
+            started_at=(
+                parse_docker_time(state["StartedAt"])
+                if state.get("StartedAt", "").startswith(("1", "2"))
+                else None
+            ),
         )
 
     # --- install -------------------------------------------------------------
@@ -281,7 +286,9 @@ class DockerRuntime:
             # Closing our attach doesn't close the container's stdin (StdinOnce is false).
             await stream.close()
 
-    async def logs(self, server_id: str, tail: int | None = 200, since: int = 0) -> AsyncIterator[str]:
+    async def logs(
+        self, server_id: str, tail: int | None = 200, since: int = 0, timestamps: bool = False
+    ) -> AsyncIterator[str]:
         """Follow the console output. Ends when the container stops. Nothing if it doesn't exist."""
         try:
             container = await self._docker.containers.get(container_name(server_id))
@@ -289,7 +296,7 @@ class DockerRuntime:
             if exc.status == 404:
                 return
             raise
-        params = {"tail": "all" if tail is None else str(tail), "since": since}
+        params = {"tail": "all" if tail is None else str(tail), "since": since, "timestamps": timestamps}
         async for line in container.log(stdout=True, stderr=True, follow=True, **params):
             yield line
 

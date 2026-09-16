@@ -355,3 +355,12 @@ def test_bedrock_console_colours():
 )
 def test_neoforge_minecraft_version(neoforge, minecraft):
     assert neoforge_minecraft_version(neoforge) == minecraft
+
+
+def test_parse_docker_time():
+    from app.runtime.state import parse_docker_time
+
+    assert parse_docker_time("2026-09-16T17:00:00.123456789Z") == pytest.approx(1789578000.123456)
+    assert parse_docker_time("2026-09-16T19:00:00+02:00") == 1789578000.0
+    with pytest.raises(ValueError):
+        parse_docker_time("yesterday")

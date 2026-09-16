@@ -1,0 +1,45 @@
+# Weekly update pull requests for every kind of dependency in the project.
+# They target dev: releases only gets what was tested there.
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /panel
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      # One pull request for all the small updates, a separate one for each major version.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: gomod
+    directory: /agent
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Base images: python, node, golang.
+  - package-ecosystem: docker
+    directories: [/, /agent]
+    target-branch: dev
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly

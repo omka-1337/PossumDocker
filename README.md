@@ -2,6 +2,8 @@
 
 # PossumDocker
 
+[![CI](https://github.com/omka-1337/PossumDocker/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/omka-1337/PossumDocker/actions/workflows/ci.yml)
+
 Self-hosted panel for creating and running game servers — from Minecraft to Counter-Strike 1.6 — in Docker containers.
 
 **Status:** early development.

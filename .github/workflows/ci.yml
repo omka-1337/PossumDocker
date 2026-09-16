@@ -1,0 +1,101 @@
+# Runs on every push and pull request: tests, linters, a vulnerability check of the dependencies,
+# and a build of both Docker images.
+name: CI
+
+on:
+  push:
+    branches: [dev, releases]
+  pull_request:
+  # Vulnerabilities get found in libraries that didn't change: check once a week too.
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer push to the same branch makes the older run pointless.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  panel:
+    name: Panel (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: panel
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          # Same as the Docker image.
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: panel/pyproject.toml
+      - name: Install
+        run: pip install -e ".[dev]" pip-audit
+      - name: Format
+        run: ruff format --check .
+      - name: Lint
+        run: ruff check .
+      - name: Tests
+        run: pytest -q
+      - name: Known vulnerabilities in dependencies
+        run: pip-audit --skip-editable
+
+  agent:
+    name: Agent (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.mod
+      - name: Format
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w ."; exit 1; }
+      - name: Vet
+        run: go vet ./...
+      - name: Tests
+        run: go test ./...
+      - name: Known vulnerabilities in the code and the Go standard library
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  web:
+    name: Web UI (TypeScript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          # Same as the Docker image.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check and build
+        run: npm run build
+      - name: Known vulnerabilities in dependencies
+        # What ends up in the browser; build tools only run here and on developers' machines.
+        run: npm audit --omit=dev --audit-level=moderate
+
+  images:
+    name: Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Panel image
+        run: docker build --tag possumdocker-panel:ci .
+      - name: Agent image
+        run: docker build --tag possumdocker-agent:ci agent

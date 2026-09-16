@@ -90,6 +90,7 @@ players:
   status:
     command: /players online
     # "Online players (2):" then "  Steve (online)"
+    answer: 'Online players \(\d+\):'
     row: '^\s+(?P<name>\S+) \(online\)$'
   kick: ["/kick {{ name }}{{ ' ' ~ reason if reason }}"]
   bans:

@@ -277,6 +277,52 @@ def test_refresh_asks_the_game(client, runtime, monkeypatch):
     assert (sid, "list") in runtime.commands
 
 
+def stamped(*lines: str):
+    import time
+    from datetime import UTC, datetime
+
+    async def logs(server_id, tail=200, since=0, timestamps=False):
+        stamp = datetime.fromtimestamp(time.time() + 0.1, UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        for line in lines:
+            yield f"{stamp} {line}\n"
+
+    return logs
+
+
+def test_no_answer_changes_nothing(client, runtime, monkeypatch):
+    server = minecraft(client)
+    sid = server["id"]
+    feed(client, sid, *MC_JOIN)
+    client.post(f"/api/servers/{sid}/start")
+    monkeypatch.setattr(runtime, "logs", stamped("[12:00:00 INFO]: something else"))
+    client.app.state.templates["minecraft-java"].players.status.wait = 0.5
+    resp = client.post(f"/api/servers/{sid}/players/refresh")
+    assert resp.status_code == 409 and "didn't answer" in resp.json()["detail"]
+    assert players(client, sid)["players"][0]["online"] is True
+
+
+def test_counter_strike_status_rows(client, runtime, monkeypatch):
+    server = create_installed(client, "cs16")
+    sid = server["id"]
+    client.post(f"/api/servers/{sid}/start")
+    monkeypatch.setattr(
+        runtime,
+        "logs",
+        stamped(
+            "hostname:  Counter-Strike 1.6 Server",
+            "players :  2 active (20 max)",
+            "#      name userid uniqueid frag time ping loss adr",
+            '# 1 "Steve"  2 STEAM_0:1:12345   3 01:23   25    0 203.0.113.9:27005',
+            '# 2 "Bot"  3 BOT   0 01:00    0    0',
+            "2 users",
+        ),
+    )
+    client.app.state.templates["cs16"].players.status.wait = 1
+    assert client.post(f"/api/servers/{sid}/players/refresh").status_code == 204
+    [steve] = players(client, sid)["players"]
+    assert (steve["key"], steve["ip"], steve["online"]) == ("id:STEAM_0:1:12345", "203.0.113.9", True)
+
+
 def test_players_need_their_permission(client):
     from tests.test_auth import PASSWORD, grant
 

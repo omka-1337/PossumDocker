@@ -108,6 +108,7 @@ Unknown keys are an error, so a typo is caught instead of silently ignored.
 | `config_files` | | Files the settings tab can edit. See [Config files](#config-files). |
 | `backup` | | See [Backups](#backups). |
 | `console` | | See [Console](#console). |
+| `players` | | Who plays, kicks and bans: the players tab. See [Players](#players). |
 
 ### Fields
 
@@ -239,6 +240,42 @@ Back up what players make and admins change (worlds, configs, plugins), not the 
 | `highlight` | `{ pattern, color }` rules; the first match colours the whole line. Colors: `red`, `yellow`, `green`, `blue`, `magenta`, `cyan`, `gray`. Patterns are regular expressions that work in both Python and JavaScript. |
 | `continuation` | Lines that belong to the previous one (a stack trace) and keep its colour. |
 | `commands` | `false` for games that read nothing from their console: the command input is hidden. |
+
+### Players
+
+The players tab learns who plays from the game's console output, and kicks and bans with the game's own
+commands or ban list files.
+
+```yaml
+players:
+  key: name
+  events:
+    - { type: join, pattern: '\]: (?P<name>\w{1,16})\[/(?P<ip>[^\]]+):\d+\] logged in with entity id' }
+    - { type: leave, pattern: '\]: (?P<name>\w{1,16}) left the game$' }
+  status:
+    command: list
+    names: '\]: There are \d+ of a max of \d+ players online: (?P<names>.*)$'
+  kick: ["kick {{ name }}"]
+  bans:
+    by: name
+    add: ["ban {{ name }}{{ ' ' ~ reason if reason }}"]
+    remove: ["pardon {{ name }}"]
+    file: { path: banned-players.json, format: json, field: name }
+```
+
+| Key | |
+|---|---|
+| `key` | What tells players apart: `id` (SteamID, UUID) when the game logs one, else `name`. |
+| `id_pattern` | With `key: id`: ids that don't match (a LAN id every client shares) fall back to the name. |
+| `ignore` | Lines matching it are never about a player (bots). |
+| `events` | `{ type, pattern }`: `join`, `leave`, `info` (more about a player, like Minecraft's UUID line) or `name` (the name of the latest player who joined without one). Named groups: `name`, `id`, `ip`, `slot`. |
+| `status` | A command that lists who is online, used by "check with the game": `names` (one line, a `names` group split by `separator`) or `row` (a line per player) after an `answer` line. `wait`: seconds to wait for the answer (5). |
+| `kick` | Commands; Jinja with `name`, `id`, `ip`, `slot`, `reason`. |
+| `bans`, `ip_bans` | `by` (`name` or `id`), `add` and `remove` commands for a running server, and `file`: the game's ban list, read for the banned list and written by the panel while the server is stopped (`format` `json` with `field` and `entry`, or `lines` with `pattern` and `line`). `file_needs_restart` for games that read it only when they start. `by_panel` for games without bans: the panel kicks banned players as they join. |
+
+Make patterns match only what the game itself prints. Chat is in the same output: in Minecraft a chat line is
+`]: <Steve> text`, so `\]: (?P<name>\w{1,16}) left the game$` can't be triggered by a player typing it.
+Names, ids and reasons never reach a command with quotes, semicolons or line breaks in them.
 
 ### Groups
 

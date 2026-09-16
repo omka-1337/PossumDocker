@@ -37,6 +37,9 @@ UNSAFE = re.compile(r'["\\;\x00-\x1f\x7f]')
 
 BanKind = Literal["player", "ip"]
 
+# A ban file entry needs something only the game knows, like a Minecraft UUID for a name nobody has seen here.
+NOT_ENOUGH_KNOWN = "this player hasn't played on this server yet: start the server to ban them"
+
 
 class PlayerError(Exception):
     """Something the user asked that this game or this server's state doesn't allow."""
@@ -268,33 +271,45 @@ class PlayerService:
         runtime = self.manager.runtime
         status = spec.status
         asked = time.time()
-        lines: list[str] = []
+        online: dict[str, dict[str, str]] = {}
+        answered = asyncio.Event()
+
+        def groups_of(match: re.Match) -> dict[str, str]:
+            return {k: v.strip() for k, v in match.groupdict().items() if v and v.strip()}
 
         async def collect() -> None:
+            # From just before the command, so an answer printed before the stream opened isn't missed.
             async for raw in runtime.logs(server.id, tail=None, since=int(asked) - 1, timestamps=True):
                 when, text = split_timestamp(raw)
-                if when >= asked - 1:
-                    lines.append(text)
+                if when < asked - 1:
+                    continue
+                if status.names and (match := re.search(status.names, text)):
+                    for name in (match.group("names") or "").split(status.separator):
+                        if name.strip():
+                            online[f"name:{name.strip()}"] = {"name": name.strip()}
+                    answered.set()
+                    return
+                if status.answer and re.search(status.answer, text):
+                    answered.set()
+                elif answered.is_set() and status.row and (match := re.search(status.row, text)):
+                    if spec.ignore and re.search(spec.ignore, text):
+                        continue
+                    if key := player_key(spec, groups_of(match)):
+                        online[key] = groups_of(match)
 
         reader = asyncio.create_task(collect())
-        await asyncio.sleep(0.2)  # the stream is open before the answer is printed
-        await runtime.send_command(server.id, status.command)
-        await asyncio.sleep(status.wait)
-        reader.cancel()
-        await asyncio.gather(reader, return_exceptions=True)
-
-        online: dict[str, dict[str, str]] = {}
-        for text in lines:
-            if status.row and (match := re.search(status.row, text)):
-                groups = {k: v.strip() for k, v in match.groupdict().items() if v and v.strip()}
-                if spec.ignore and re.search(spec.ignore, text):
-                    continue
-                if key := player_key(spec, groups):
-                    online[key] = groups
-            elif status.names and (match := re.search(status.names, text)):
-                for name in (match.group("names") or "").split(status.separator):
-                    if name.strip():
-                        online[f"name:{name.strip()}"] = {"name": name.strip()}
+        try:
+            await asyncio.sleep(0.2)  # let the stream open first
+            await runtime.send_command(server.id, status.command)
+            try:
+                await asyncio.wait_for(answered.wait(), status.wait)
+            except TimeoutError:
+                raise PlayerError("the game didn't answer, try again") from None
+            if status.row:
+                await asyncio.sleep(0.7)  # the rows follow the heading
+        finally:
+            reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)
 
         now = _at(time.time())
         async with self._sessionmaker() as session:
@@ -464,7 +479,7 @@ class PlayerService:
                     known = {k: v for k, v in context.items() if v is not None or k == "reason"}
                     items.append({k: _render(v, known, strict=True) for k, v in ban_file.entry.items()})
                 except Exception as exc:
-                    raise PlayerError(f"not enough known about this player to ban them now: {exc}") from exc
+                    raise PlayerError(NOT_ENOUGH_KNOWN) from exc
             output = json.dumps(items, indent=2, ensure_ascii=False) + "\n"
         else:
             lines = []
@@ -481,7 +496,7 @@ class PlayerService:
                 try:
                     lines.append(_render(ban_file.line, known, strict=True))
                 except Exception as exc:
-                    raise PlayerError(f"not enough known about this player to ban them now: {exc}") from exc
+                    raise PlayerError(NOT_ENOUGH_KNOWN) from exc
             output = "\n".join(lines) + "\n" if lines else ""
         await self.manager.write_game_file(server, ban_file.path, output.encode())
 

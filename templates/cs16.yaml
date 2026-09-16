@@ -119,6 +119,8 @@ players:
     - { type: leave, pattern: '^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d: "(?P<name>.+)<(?P<slot>\d+)><(?P<id>[^>]*)><[^>]*>" disconnected$' }
   status:
     command: status
+    # "players : 1 active (20 max)", then a line per player
+    answer: '^players\s*:\s*\d+\s+active'
     # "#  1 "Steve"  2 STEAM_0:1:12345   0 01:23   25    0 203.0.113.9:27005"
     row: '^#\s*\d+\s+"(?P<name>.*)"\s+(?P<slot>\d+)\s+(?P<id>\S+)\s+-?\d+\s+\S+\s+\d+\s+\d+\s+(?P<ip>[\d.]+):\d+'
   kick: ["kick #{{ slot }}"]

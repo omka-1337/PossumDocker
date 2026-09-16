@@ -327,19 +327,23 @@ class PlayerStatus(StrictModel):
     """A console command that lists who is online right now, and how to read its answer."""
 
     command: str
-    # A line per player, with the same named groups as events.
+    # A line per player, with the same named groups as events, after a line matching `answer`
+    # (the list's heading: without it an empty list and no answer look the same).
     row: Pattern | None = None
+    answer: Pattern | None = None
     # Or one line with all the names: a `names` group, split by `separator`.
     names: Pattern | None = None
     separator: str = ", "
-    # Seconds to wait for the answer.
-    wait: float = Field(default=2, ge=0.5, le=10)
+    # Longest wait for the answer, in seconds.
+    wait: float = Field(default=5, ge=0.5, le=15)
 
     @model_validator(mode="after")
     def _one_way(self) -> "PlayerStatus":
         if bool(self.row) == bool(self.names):
             raise ValueError("players.status needs exactly one of 'row' or 'names'")
-        for pattern in (self.row, self.names):
+        if self.row and not self.answer:
+            raise ValueError("players.status with 'row' needs 'answer', the line the list starts with")
+        for pattern in (self.row, self.names, self.answer):
             if pattern:
                 _compiles(pattern)
         return self

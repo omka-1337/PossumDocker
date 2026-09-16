@@ -23,7 +23,7 @@ export interface ViewProps {
 function itemClass(selected: boolean, dropping: boolean, cut: boolean) {
   return [
     'transition-colors',
-    dropping ? 'bg-sky-500/30 ring-2 ring-sky-400' : selected ? 'bg-sky-500/20 ring-1 ring-sky-400/50' : 'hover:bg-white/5',
+    dropping ? 'bg-sky-500/30 ring-2 ring-sky-400' : selected ? 'bg-sky-500/20 ring-1 ring-sky-400/50' : 'hover:bg-zinc-50/5',
     cut ? 'opacity-50' : '',
   ].join(' ')
 }

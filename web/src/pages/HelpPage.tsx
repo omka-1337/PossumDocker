@@ -9,7 +9,7 @@ import gameTemplates from '../../../docs/create-game-template.md?raw'
 // Links between docs and to the repository work on GitHub; in the panel, in-page ones stay here and the
 // rest open GitHub in a new tab.
 function DocLink({ href = '', children }: ComponentProps<'a'>) {
-  const className = 'text-zinc-100 underline underline-offset-2 hover:text-white'
+  const className = 'text-zinc-100 underline underline-offset-2 hover:text-zinc-50'
   if (href.startsWith('#')) {
     return (
       <a href={href} className={className}>

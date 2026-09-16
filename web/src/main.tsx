@@ -12,6 +12,7 @@ import './index.css'
 import { AboutPage } from './pages/AboutPage.tsx'
 import { ServerPage } from './pages/ServerPage.tsx'
 import { ServersPage } from './pages/ServersPage.tsx'
+import { SettingsPage } from './pages/SettingsPage.tsx'
 import { HELP_GAME_TEMPLATES, HelpRoute } from './pages/HelpRoute.tsx'
 import { UsersPage } from './pages/UsersPage.tsx'
 
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: '/', element: <ServersPage /> },
       { path: '/servers/:serverId', element: <ServerPage /> },
       { path: '/users', element: <UsersPage /> },
+      { path: '/settings', element: <SettingsPage /> },
       { path: '/about', element: <AboutPage /> },
       { path: HELP_GAME_TEMPLATES, element: <HelpRoute /> },
     ],

@@ -1,4 +1,13 @@
-import { IconInfoCircle, IconKey, IconLogout, IconServer2, IconUser, IconUsers, type Icon } from '@tabler/icons-react'
+import {
+  IconInfoCircle,
+  IconKey,
+  IconLogout,
+  IconServer2,
+  IconSettings,
+  IconUser,
+  IconUsers,
+  type Icon,
+} from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { Link, Outlet, useLocation } from 'react-router'
 import { useChangePassword, useLogout, useMe } from '../api/auth'
@@ -22,7 +31,7 @@ export function Layout() {
         <NavItem to="/" matches={(path) => path === '/' || path.startsWith('/servers/')} icon={IconServer2} label="servers" />
         {me?.is_admin && <NavItem to="/users" icon={IconUsers} label="users" />}
         <div className="hidden flex-1 sm:block" />
-        <NavItem to="/about" icon={IconInfoCircle} label="about" />
+        {/* Bottom, top to bottom: the account, the panel's settings, about. */}
         <button
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
@@ -34,6 +43,8 @@ export function Layout() {
           <IconUser size={22} stroke={1.5} />
           <span className="max-w-full truncate">{me?.username}</span>
         </button>
+        <NavItem to="/settings" icon={IconSettings} label="settings" />
+        <NavItem to="/about" icon={IconInfoCircle} label="about" />
       </nav>
 
       <main className="min-h-0 flex-1 overflow-y-auto bg-page sm:my-1 sm:mr-1 sm:rounded-2xl sm:border sm:border-line-soft">
@@ -70,7 +81,7 @@ function NavItem({ to, icon: Icon, label, matches = (path) => path === to }: Nav
       to={to}
       aria-current={active ? 'page' : undefined}
       className={`flex flex-col items-center gap-1 rounded-xl px-3 py-2.5 text-xs transition sm:px-1 ${
-        active ? 'bg-active text-black' : 'text-zinc-300 hover:bg-panel'
+        active ? 'bg-active text-on-active' : 'text-zinc-300 hover:bg-panel'
       }`}
     >
       <Icon size={22} stroke={1.5} />

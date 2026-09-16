@@ -96,7 +96,7 @@ export function CreateServerDialog({ onClose, onCreated }: Props) {
             <Link
               to={HELP_GAME_TEMPLATES}
               onClick={onClose}
-              className="text-zinc-300 underline underline-offset-2 hover:text-white"
+              className="text-zinc-300 underline underline-offset-2 hover:text-zinc-50"
             >
               read how to add it
             </Link>

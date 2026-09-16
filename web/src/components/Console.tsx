@@ -1,14 +1,48 @@
 import { FitAddon } from '@xterm/addon-fit'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, type ITheme } from '@xterm/xterm'
 import '@xterm/xterm/css/xterm.css'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { ConsoleSpec } from '../api/types'
 import { createHighlighter } from '../lib/highlight'
+import { useTheme, type Theme } from '../lib/theme'
 
 const RECONNECT_MS = 2000
 const HISTORY_SIZE = 50
 
 type ServerMessage = { type: 'log' | 'error'; data: string }
+
+// Background matches bg-frame around it. Colours are softer than xterm's defaults on dark, darker on light;
+// white text from a game stays readable on the light one.
+const TERMINAL_THEMES: Record<Theme, ITheme> = {
+  dark: {
+    background: '#101010',
+    foreground: '#d4d4d8',
+    selectionBackground: '#3f3f46',
+    red: '#f87171',
+    yellow: '#facc15',
+    green: '#4ade80',
+    blue: '#60a5fa',
+    magenta: '#e879f9',
+    cyan: '#22d3ee',
+    brightBlack: '#71717a',
+  },
+  light: {
+    background: '#f1f1f3',
+    foreground: '#27272a',
+    cursor: '#27272a',
+    selectionBackground: '#d4d4d8',
+    black: '#27272a',
+    red: '#dc2626',
+    yellow: '#a16207',
+    green: '#15803d',
+    blue: '#2563eb',
+    magenta: '#c026d3',
+    cyan: '#0e7490',
+    white: '#52525b',
+    brightBlack: '#71717a',
+    brightWhite: '#18181b',
+  },
+}
 
 interface Props {
   serverId: string
@@ -28,6 +62,8 @@ export function Console({ serverId, running, consoleSpec, canSend }: Props) {
   const terminalRef = useRef<Terminal | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
+  const theme = useTheme()
+  const themeRef = useRef(theme)
   // Refs, so the socket effect doesn't reconnect when the template finishes loading.
   const specRef = useRef(consoleSpec)
   const highlightRef = useRef(createHighlighter(consoleSpec))
@@ -46,19 +82,7 @@ export function Console({ serverId, running, consoleSpec, canSend }: Props) {
       fontFamily: '"IBM Plex Mono", ui-monospace, monospace',
       fontSize: 13,
       cursorInactiveStyle: 'none',
-      theme: {
-        background: '#101010',
-        foreground: '#d4d4d8',
-        selectionBackground: '#3f3f46',
-        // Softer than the xterm defaults on a near-black background.
-        red: '#f87171',
-        yellow: '#facc15',
-        green: '#4ade80',
-        blue: '#60a5fa',
-        magenta: '#e879f9',
-        cyan: '#22d3ee',
-        brightBlack: '#71717a',
-      },
+      theme: TERMINAL_THEMES[themeRef.current],
     })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
@@ -74,6 +98,12 @@ export function Console({ serverId, running, consoleSpec, canSend }: Props) {
       terminalRef.current = null
     }
   }, [])
+
+  // Switching the theme recolours the output already on screen too.
+  useEffect(() => {
+    themeRef.current = theme
+    if (terminalRef.current) terminalRef.current.options.theme = TERMINAL_THEMES[theme]
+  }, [theme])
 
   // WebSocket: reconnects on its own until the component unmounts.
   useEffect(() => {

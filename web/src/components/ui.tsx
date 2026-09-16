@@ -7,7 +7,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 }
 
 const buttonVariants = {
-  primary: 'bg-active text-black hover:bg-white',
+  primary: 'bg-active text-on-active hover:bg-active-hover',
   secondary: 'bg-raised text-zinc-100 hover:bg-raised-hover',
   danger: 'bg-red-950/60 text-red-300 hover:bg-red-950',
 }
@@ -96,7 +96,7 @@ export function Segmented({
           aria-checked={o.value === value}
           onClick={() => onChange(o.value)}
           className={`flex-1 px-3 py-2.5 text-sm lowercase transition ${i > 0 ? 'border-l border-line-soft' : ''} ${
-            o.value === value ? 'bg-active text-black' : 'hover:bg-raised-hover'
+            o.value === value ? 'bg-active text-on-active' : 'hover:bg-raised-hover'
           }`}
         >
           {o.label}
@@ -124,7 +124,7 @@ export function Tabs<T extends string>({
           aria-selected={tab.value === value}
           onClick={() => onChange(tab.value)}
           className={`shrink-0 rounded-xl px-3 py-2 text-sm lowercase transition ${
-            tab.value === value ? 'bg-active text-black' : 'text-zinc-300 hover:bg-panel'
+            tab.value === value ? 'bg-active text-on-active' : 'text-zinc-300 hover:bg-panel'
           }`}
         >
           {tab.label}
@@ -154,7 +154,7 @@ export function Switch({
     >
       <span
         className={`absolute top-1 left-1 size-4 rounded-full transition ${
-          checked ? 'translate-x-5 bg-black' : 'bg-zinc-400'
+          checked ? 'translate-x-5 bg-on-active' : 'bg-zinc-400'
         }`}
       />
     </button>

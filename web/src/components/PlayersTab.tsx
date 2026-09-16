@@ -49,6 +49,36 @@ export function PlayersTab({ server }: { server: Server }) {
       { onSuccess: ({ effective }) => setNote(EFFECTIVE_NOTE[effective]) },
     )
 
+  // The bans that keep this player out: of them, and of their address.
+  const bansOf = (player: PlayerInfo) =>
+    bans.filter((ban) =>
+      ban.kind === 'ip'
+        ? ban.value === player.ip
+        : abilities.bans_by_panel
+          ? ban.value === player.key
+          : ban.value === (abilities.ban_by === 'id' ? player.game_id : player.name),
+    )
+
+  const unbanPlayer = async (player: PlayerInfo) => {
+    let effective: Effective = 'now'
+    for (const ban of bansOf(player)) {
+      effective = (await actions.unban.mutateAsync({ kind: ban.kind, value: ban.value })).effective
+    }
+    setNote(EFFECTIVE_NOTE[effective])
+  }
+
+  // A banned player gets "unban" (their ban and their address's) instead of "ban".
+  const banToggle = (player: PlayerInfo) =>
+    bansOf(player).length > 0 ? (
+      <Button onClick={() => unbanPlayer(player).catch(() => {})} disabled={actions.unban.isPending}>
+        unban
+      </Button>
+    ) : (
+      <IconButton onClick={() => setBanning(player)} aria-label="ban" title="ban">
+        <IconBan size={18} />
+      </IconButton>
+    )
+
   return (
     <div className="space-y-8 pb-10">
       <div className="flex flex-wrap items-center gap-2">
@@ -86,6 +116,7 @@ export function PlayersTab({ server }: { server: Server }) {
             serverId={server.id}
             avatars={abilities.avatars}
             player={player}
+            banned={bansOf(player).length > 0}
             when={player.online_since && `joined ${formatMoment(player.online_since)}`}
           >
             {abilities.kick && (
@@ -98,29 +129,22 @@ export function PlayersTab({ server }: { server: Server }) {
                 <IconDoorExit size={18} />
               </IconButton>
             )}
-            {canBan && (
-              <IconButton onClick={() => setBanning(player)} aria-label="ban" title="ban">
-                <IconBan size={18} />
-              </IconButton>
-            )}
+            {canBan && banToggle(player)}
           </PlayerRow>
         ))}
       </Section>
 
-      <Section title="seen before" empty="nobody else yet.">
+      <Section title="offline" empty="nobody else yet.">
         {offline.map((player) => (
           <PlayerRow
             key={player.key}
             serverId={server.id}
             avatars={abilities.avatars}
             player={player}
+            banned={bansOf(player).length > 0}
             when={`last seen ${formatAgo(player.last_seen)}`}
           >
-            {canBan && (
-              <IconButton onClick={() => setBanning(player)} aria-label="ban" title="ban">
-                <IconBan size={18} />
-              </IconButton>
-            )}
+            {canBan && banToggle(player)}
           </PlayerRow>
         ))}
       </Section>
@@ -169,12 +193,14 @@ function PlayerRow({
   serverId,
   avatars,
   player,
+  banned,
   when,
   children,
 }: {
   serverId: string
   avatars: PlayerAbilities['avatars']
   player: PlayerInfo
+  banned: boolean
   when: string | null
   children: React.ReactNode
 }) {
@@ -187,7 +213,10 @@ function PlayerRow({
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{displayName(player)}</div>
+        <div className="truncate text-sm font-medium">
+          {displayName(player)}
+          {banned && <span className="ml-2 text-xs font-normal text-red-400">banned</span>}
+        </div>
         <div className="truncate text-xs text-muted" title={`first seen ${formatDate(Date.parse(player.first_seen) / 1000)}`}>
           {[when, player.ip, player.name && player.game_id].filter(Boolean).join(' · ')}
         </div>

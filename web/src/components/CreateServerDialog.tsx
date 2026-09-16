@@ -1,8 +1,10 @@
 import { useState } from 'react'
+import { Link } from 'react-router'
 import { useTemplates } from '../api/queries'
 import type { Server, TemplateSummary } from '../api/types'
 import { GameCover } from './GameIcon'
 import { TemplateForm } from './TemplateForm'
+import { HELP_GAME_TEMPLATES } from '../pages/HelpRoute'
 import { Modal, Segmented } from './ui'
 
 interface Props {
@@ -72,22 +74,34 @@ export function CreateServerDialog({ onClose, onCreated }: Props) {
       ) : isError ? (
         <p className="text-sm text-red-400">could not load the list of games</p>
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2">
-          {list.map((g) => (
-            <li key={g.key}>
-              <button
-                onClick={() => setGameKey(g.key)}
-                className="group w-full overflow-hidden rounded-xl bg-raised text-left ring-sky-400/0 transition hover:bg-raised-hover hover:ring-2 hover:ring-zinc-500 active:scale-[0.99]"
-              >
-                <GameCover template={g.templates[0]} />
-                <span className="block px-3 py-2">
-                  <span className="block truncate text-sm font-medium lowercase">{g.name}</span>
-                  {g.description && <span className="block truncate text-xs text-muted">{g.description}</span>}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {list.map((g) => (
+              <li key={g.key}>
+                <button
+                  onClick={() => setGameKey(g.key)}
+                  className="group w-full overflow-hidden rounded-xl bg-raised text-left ring-sky-400/0 transition hover:bg-raised-hover hover:ring-2 hover:ring-zinc-500 active:scale-[0.99]"
+                >
+                  <GameCover template={g.templates[0]} />
+                  <span className="block px-3 py-2">
+                    <span className="block truncate text-sm font-medium lowercase">{g.name}</span>
+                    {g.description && <span className="block truncate text-xs text-muted">{g.description}</span>}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-5 text-center text-xs text-muted">
+            don&apos;t see the game you need?{' '}
+            <Link
+              to={HELP_GAME_TEMPLATES}
+              onClick={onClose}
+              className="text-zinc-300 underline underline-offset-2 hover:text-white"
+            >
+              read how to add it
+            </Link>
+          </p>
+        </>
       )}
     </Modal>
   )

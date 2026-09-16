@@ -126,6 +126,8 @@ case $command in
     detect_version
     ensure_env
     up
+    # `up` leaves an unchanged container running: restart it, so changed templates are loaded.
+    compose restart panel
     wait_healthy
     echo "The panel is running at http://localhost:$(port)"
     ;;

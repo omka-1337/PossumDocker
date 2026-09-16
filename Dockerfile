@@ -7,6 +7,8 @@ COPY web/package.json web/package-lock.json ./
 # Retry downloads: on a flaky connection one failed request would otherwise fail the whole build.
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000
 COPY web/ ./
+# The in-panel help shows docs/ as it is.
+COPY docs/ /docs/
 RUN npm run build
 
 

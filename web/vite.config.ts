@@ -6,6 +6,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // The help pages import ../docs, outside web/.
+    fs: { allow: ['..'] },
     // In development the panel runs separately: `uvicorn app.main:app --reload --port 8080`.
     proxy: {
       // ws: the server console is a WebSocket under /api.

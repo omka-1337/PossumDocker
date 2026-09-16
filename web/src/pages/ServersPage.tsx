@@ -40,9 +40,13 @@ export function ServersPage() {
         </Centered>
       ) : servers.length === 0 ? (
         <Centered>
-          <div className="mb-6 text-7xl font-semibold tracking-tighter text-zinc-700 select-none" aria-hidden>
-            &gt;_
-          </div>
+          {/* Mirrored so the possum walks into the page. */}
+          <img
+            src="/no-servers.webp"
+            alt=""
+            draggable={false}
+            className="mx-auto mb-6 w-full max-w-sm -scale-x-100 select-none"
+          />
           {isAdmin ? (
             <>
               <p className="text-zinc-200">no servers yet</p>

@@ -80,3 +80,24 @@ console:
     - { pattern: '^\s*\d+\.\d+ Error ', color: red }
     - { pattern: '^\s*\d+\.\d+ Warning ', color: yellow }
     - { pattern: '^\+ ', color: gray }
+
+players:
+  key: name
+  events:
+    # "2026-09-16 17:00:00 [JOIN] Steve joined the game"
+    - { type: join, pattern: '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \[JOIN\] (?P<name>\S+) joined the game$' }
+    - { type: leave, pattern: '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d \[LEAVE\] (?P<name>\S+) left the game$' }
+  status:
+    command: /players online
+    # "Online players (2):" then "  Steve (online)"
+    row: '^\s+(?P<name>\S+) \(online\)$'
+  kick: ["/kick {{ name }}{{ ' ' ~ reason if reason }}"]
+  bans:
+    by: name
+    add: ["/ban {{ name }} {{ reason or 'Banned by an admin.' }}"]
+    remove: ["/unban {{ name }}"]
+    file:
+      path: config/server-banlist.json
+      format: json
+      field: username
+      entry: { username: "{{ name }}", reason: "{{ reason or '' }}" }

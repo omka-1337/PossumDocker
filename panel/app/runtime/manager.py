@@ -126,6 +126,9 @@ class ServerManager:
         self._reaper: asyncio.Task | None = None
         self._resumer: asyncio.Task | None = None
         self._disk_watcher: asyncio.Task | None = None
+        from app.runtime.players import PlayerService  # it imports this module
+
+        self.players = PlayerService(self)
         # Servers stopped for going over their disk limit, and why; shown until the next start.
         self.disk_errors: dict[str, str] = {}
 
@@ -146,6 +149,7 @@ class ServerManager:
             await session.commit()
 
     async def shutdown(self) -> None:
+        await self.players.stop()
         tasks = [*self._tasks.values(), *(t for t in (self._reaper, self._resumer, self._disk_watcher) if t)]
         for task in tasks:
             task.cancel()
@@ -154,6 +158,7 @@ class ServerManager:
     def start_background_jobs(self) -> None:
         self._resumer = asyncio.create_task(self._resume())
         self._disk_watcher = asyncio.create_task(self._watch_disks())
+        self.players.start()
         reap = getattr(self.runtime.files, "reap_idle", None)
         if reap is None:
             return
@@ -471,16 +476,30 @@ class ServerManager:
 
     # --- config files --------------------------------------------------------
 
-    def _config_path(self, server: Server, config: ConfigFile) -> str:
-        """Where the game container sees the config file."""
+    def container_path(self, server: Server, path: str) -> str:
+        """Where the game container sees a file given relative to the server's data (a config, a ban list)."""
         runtime = self._templates[server.template_id].runtime
         if not runtime.mounts:
-            return posixpath.join(runtime.data_path, config.path)
-        # With mounts, config paths are relative to the volume: find the mount that holds it.
+            return posixpath.join(runtime.data_path, path)
+        # With mounts, paths are relative to the volume: find the mount that holds it.
         for mount in runtime.mounts:
-            if config.path == mount.subpath or config.path.startswith(mount.subpath + "/"):
-                return posixpath.join(mount.path, config.path[len(mount.subpath) :].lstrip("/"))
-        raise ValueError(f"config file {config.path} isn't inside any of the game's mounts")
+            if path == mount.subpath or path.startswith(mount.subpath + "/"):
+                return posixpath.join(mount.path, path[len(mount.subpath) :].lstrip("/"))
+        raise ValueError(f"{path} isn't inside any of the game's mounts")
+
+    def _config_path(self, server: Server, config: ConfigFile) -> str:
+        return self.container_path(server, config.path)
+
+    async def read_game_file(self, server: Server, path: str) -> bytes | None:
+        """A file of the game, running or not; None if it doesn't exist (yet)."""
+        if server.state != ServerState.INSTALLED:
+            raise ServerBusy("the server is not installed")
+        await self._ensure_container(server)
+        return await self.runtime.read_file(server.id, self.container_path(server, path))
+
+    async def write_game_file(self, server: Server, path: str, data: bytes) -> None:
+        await self._ensure_container(server)
+        await self.runtime.write_file(server.id, self.container_path(server, path), data)
 
     async def read_config(self, server: Server, config: ConfigFile) -> ConfigDocument | None:
         """None until the game has written the file (usually on its first start)."""

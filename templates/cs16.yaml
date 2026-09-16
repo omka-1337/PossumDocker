@@ -63,6 +63,11 @@ runtime:
     - "{{ rcon_password }}"
     # An empty item is dropped, so this adds -insecure only when VAC is off.
     - "{{ '' if vac else '-insecure' }}"
+    # Joins and leaves in the console: the players tab reads them.
+    - +log
+    - "on"
+    - +mp_logecho
+    - "1"
   stop:
     command: quit
     timeout: 15
@@ -100,6 +105,32 @@ backup:
     - cstrike/motd.txt
     - cstrike/banned.cfg
     - cstrike/listip.cfg
+
+players:
+  # SteamIDs; LAN clients (VAC off) all share one id, so they are told apart by name.
+  key: id
+  id_pattern: 'STEAM_\d:\d:\d+'
+  ignore: '<BOT>'
+  events:
+    # The server log, echoed to the console ("+log on" in the command line):
+    # L 09/16/2026 - 17:00:00: "Steve<2><STEAM_ID_PENDING><>" connected, address "203.0.113.9:27005"
+    - { type: info, pattern: '^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d: "(?P<name>.+)<(?P<slot>\d+)><(?P<id>[^>]*)><[^>]*>" connected, address "(?P<ip>[^":]+)(?::\d+)?"$' }
+    - { type: join, pattern: '^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d: "(?P<name>.+)<(?P<slot>\d+)><(?P<id>[^>]*)><[^>]*>" entered the game$' }
+    - { type: leave, pattern: '^L \d\d/\d\d/\d{4} - \d\d:\d\d:\d\d: "(?P<name>.+)<(?P<slot>\d+)><(?P<id>[^>]*)><[^>]*>" disconnected$' }
+  status:
+    command: status
+    # "#  1 "Steve"  2 STEAM_0:1:12345   0 01:23   25    0 203.0.113.9:27005"
+    row: '^#\s*\d+\s+"(?P<name>.*)"\s+(?P<slot>\d+)\s+(?P<id>\S+)\s+-?\d+\s+\S+\s+\d+\s+\d+\s+(?P<ip>[\d.]+):\d+'
+  kick: ["kick #{{ slot }}"]
+  bans:
+    by: id
+    add: ["banid 0 {{ id }} kick", "writeid"]
+    remove: ["removeid {{ id }}", "writeid"]
+    file: { path: cstrike/banned.cfg, format: lines, pattern: '^banid\s+\S+\s+(\S+)', line: "banid 0.000000 {{ id }}" }
+  ip_bans:
+    add: ["addip 0 {{ ip }}", "writeip"]
+    remove: ["removeip {{ ip }}", "writeip"]
+    file: { path: cstrike/listip.cfg, format: lines, pattern: '^addip\s+\S+\s+(\S+)', line: "addip 0.000000 {{ ip }}" }
 
 query:
   protocol: goldsrc

@@ -13,6 +13,7 @@ from sqlalchemy import (
     Integer,
     String,
     TypeDecorator,
+    UniqueConstraint,
     false,
 )
 from sqlalchemy import Enum as SAEnum
@@ -142,6 +143,43 @@ class Schedule(Base):
     # "ok" | "failed" | "skipped"
     last_status: Mapped[str | None] = mapped_column(String(16), default=None)
     last_message: Mapped[str | None] = mapped_column(String(1000), default=None)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+
+class Player(Base):
+    """Someone who played on a server, as its console output told the panel."""
+
+    __tablename__ = "players"
+    __table_args__ = (UniqueConstraint("server_id", "key"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    server_id: Mapped[str] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), index=True)
+    # What tells players apart on this game: "id:<SteamID/UUID>" or "name:<name>".
+    key: Mapped[str] = mapped_column(String(200))
+    name: Mapped[str | None] = mapped_column(String(128), default=None)
+    # The game's id for them: SteamID, Minecraft UUID, Xbox XUID.
+    game_id: Mapped[str | None] = mapped_column(String(128), default=None)
+    ip: Mapped[str | None] = mapped_column(String(64), default=None)
+    # A number some games' commands use for a connected player (CS 1.6: kick #2).
+    slot: Mapped[str | None] = mapped_column(String(16), default=None)
+    online: Mapped[bool] = mapped_column(Boolean, default=False)
+    online_since: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None)
+    first_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+
+class PanelBan(Base):
+    """A ban the panel itself enforces, for games that have none (Minecraft Bedrock)."""
+
+    __tablename__ = "panel_bans"
+    __table_args__ = (UniqueConstraint("server_id", "kind", "value"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    server_id: Mapped[str] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), index=True)
+    # "player" (value: the player's key) or "ip"
+    kind: Mapped[str] = mapped_column(String(8))
+    value: Mapped[str] = mapped_column(String(200))
+    reason: Mapped[str | None] = mapped_column(String(200), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 

@@ -12,6 +12,7 @@ class Permission(enum.StrEnum):
     RESTORE = "restore"  # restore a backup: replaces the server's files
     SETTINGS = "settings"  # game settings and config files
     SCHEDULES = "schedules"  # manage schedules
+    PLAYERS = "players"  # see who plays (with their addresses), kick and ban
 
 
 # Every other permission needs VIEW: there is no controlling a server you can't see.

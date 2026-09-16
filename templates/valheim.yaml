@@ -87,3 +87,16 @@ console:
     - { pattern: '\b(ERROR|Error|Exception)\b', color: red }
     - { pattern: '\b(WARN|WARNING|Warning)\b', color: yellow }
     - { pattern: '\bDEBUG\b', color: gray }
+
+players:
+  key: id
+  events:
+    # "Got connection SteamID 76561198000000000", then "Got character ZDOID from Steve : -123:1"
+    - { type: join, pattern: 'Got connection SteamID (?P<id>\d{17})' }
+    - { type: name, pattern: 'Got character ZDOID from (?P<name>.+?) : -?\d+:\d+' }
+    - { type: leave, pattern: 'Closing socket (?P<id>\d{17})' }
+  # No console to kick with. Bans go in the ban list, which Valheim reads when it starts.
+  bans:
+    by: id
+    file: { path: config/bannedlist.txt, format: lines, line: "{{ id }}" }
+    file_needs_restart: true

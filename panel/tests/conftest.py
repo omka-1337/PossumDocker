@@ -140,6 +140,12 @@ def login(client: TestClient, username: str, password: str) -> None:
 
 
 @pytest.fixture(autouse=True)
+def no_player_watchers(monkeypatch):
+    # Following consoles runs forever in the background; tests feed lines to the player service directly.
+    monkeypatch.setattr("app.runtime.players.PlayerService.start", lambda self: None)
+
+
+@pytest.fixture(autouse=True)
 def free_ports(monkeypatch):
     # Don't depend on what's listening on the machine running the tests.
     monkeypatch.setattr("app.runtime.ports.is_port_free", lambda port, protocol: True)

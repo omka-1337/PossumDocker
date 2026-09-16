@@ -136,5 +136,48 @@ console:
     - { pattern: '^\[init\]|\tmc-server-runner\t', color: gray }
   continuation: '^(\s+at |\s*\.\.\. \d+ more|Caused by: |[\w.$]+(Exception|Error)(: |$))'
 
+players:
+  key: name
+  events:
+    # Before the join, in online mode: "UUID of player Steve is 069a79f4-44e9-4726-a5be-fca90e38aaf5"
+    - { type: info, pattern: 'UUID of player (?P<name>\w{1,16}) is (?P<id>[0-9a-f-]{36})' }
+    # "Steve[/203.0.113.9:53012] logged in with entity id 123 at (...)". Chat lines start with <name>, so they can't pass for these.
+    - { type: join, pattern: '\]: (?P<name>\w{1,16})\[/(?P<ip>[^\]]+):\d+\] logged in with entity id' }
+    - { type: leave, pattern: '\]: (?P<name>\w{1,16}) left the game$' }
+  status:
+    command: list
+    # "There are 2 of a max of 20 players online: Steve, Alex"
+    names: '\]: There are \d+ (?:of a max of|out of maximum) \d+ players online[.:]\s*(?P<names>.*)$'
+  kick: ["kick {{ name }}{{ ' ' ~ reason if reason }}"]
+  bans:
+    by: name
+    add: ["ban {{ name }}{{ ' ' ~ reason if reason }}"]
+    remove: ["pardon {{ name }}"]
+    # While the server is stopped the panel writes the list itself; the game rewrites it while running.
+    file:
+      path: banned-players.json
+      format: json
+      field: name
+      entry:
+        uuid: "{{ id }}"
+        name: "{{ name }}"
+        created: "{{ now }}"
+        source: PossumDocker
+        expires: forever
+        reason: "{{ reason or 'Banned by an operator.' }}"
+  ip_bans:
+    add: ["ban-ip {{ ip }}{{ ' ' ~ reason if reason }}"]
+    remove: ["pardon-ip {{ ip }}"]
+    file:
+      path: banned-ips.json
+      format: json
+      field: ip
+      entry:
+        ip: "{{ ip }}"
+        created: "{{ now }}"
+        source: PossumDocker
+        expires: forever
+        reason: "{{ reason or 'Banned by an operator.' }}"
+
 query:
   protocol: minecraft

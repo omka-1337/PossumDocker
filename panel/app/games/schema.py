@@ -297,6 +297,131 @@ class TemplateGroup(StrictModel):
     order: int = 0
 
 
+def _compiles(pattern: str) -> str:
+    try:
+        re.compile(pattern)
+    except re.error as exc:
+        raise ValueError(f"invalid pattern {pattern!r}: {exc}") from exc
+    return pattern
+
+
+Pattern = Annotated[str, Field(max_length=500)]
+
+
+class PlayerEvent(StrictModel):
+    """A console line that says something about a player. Named groups carry what it says:
+    `name`, `id` (SteamID, UUID, XUID), `ip`, `slot` (a number the game's own commands use)."""
+
+    # join: online from now; leave: offline; info: more about a known player (Minecraft's UUID line);
+    # name: the name of the most recent player who joined without one (Valheim).
+    type: Literal["join", "leave", "info", "name"]
+    pattern: Pattern
+
+    @field_validator("pattern")
+    @classmethod
+    def _valid(cls, pattern: str) -> str:
+        return _compiles(pattern)
+
+
+class PlayerStatus(StrictModel):
+    """A console command that lists who is online right now, and how to read its answer."""
+
+    command: str
+    # A line per player, with the same named groups as events.
+    row: Pattern | None = None
+    # Or one line with all the names: a `names` group, split by `separator`.
+    names: Pattern | None = None
+    separator: str = ", "
+    # Seconds to wait for the answer.
+    wait: float = Field(default=2, ge=0.5, le=10)
+
+    @model_validator(mode="after")
+    def _one_way(self) -> "PlayerStatus":
+        if bool(self.row) == bool(self.names):
+            raise ValueError("players.status needs exactly one of 'row' or 'names'")
+        for pattern in (self.row, self.names):
+            if pattern:
+                _compiles(pattern)
+        return self
+
+
+class BanFile(StrictModel):
+    """The game's own ban list, relative to the volume (or data_path without mounts)."""
+
+    path: RelativePath
+    # json: a list of strings or objects (`field` holds the value); lines: one entry per line.
+    format: Literal["json", "lines"]
+    field: str | None = None
+    # lines: a group that holds the value, e.g. '^banid\s+\S+\s+(\S+)'. Default: the whole line.
+    pattern: Pattern | None = None
+    # How the panel writes an entry when it edits the file itself: a JSON object whose values are
+    # Jinja templates, or a line. Without it the file is only read.
+    entry: dict[str, str] | None = None
+    line: str | None = None
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "BanFile":
+        if ".." in self.path.split("/"):
+            raise ValueError("ban file path must stay inside the data directory")
+        if self.format == "json" and (self.pattern or self.line):
+            raise ValueError("a json ban file uses 'field' and 'entry'")
+        if self.format == "lines" and (self.field or self.entry):
+            raise ValueError("a lines ban file uses 'pattern' and 'line'")
+        if self.pattern:
+            _compiles(self.pattern)
+        return self
+
+    @property
+    def writable(self) -> bool:
+        return bool(self.entry or self.line)
+
+
+class BanSpec(StrictModel):
+    # What identifies a banned player: their `name`, their `id`, or (ip_bans) the address.
+    by: Literal["name", "id", "ip"] = "name"
+    # Console commands while the server runs. Jinja with name, id, ip, slot, reason.
+    add: list[str] = []
+    remove: list[str] = []
+    file: BanFile | None = None
+    # The game reads the file only when it starts: a ban written to it waits for a restart.
+    file_needs_restart: bool = False
+    # The game has no bans at all (Minecraft Bedrock): the panel keeps the list and kicks a banned
+    # player as soon as they join. Only works while the panel runs.
+    by_panel: bool = False
+
+
+class PlayersSpec(StrictModel):
+    """Who plays on the server, from its console output, and how to kick and ban them."""
+
+    # What tells players apart: `id` when the game logs one reliably, else `name`.
+    key: Literal["name", "id"] = "name"
+    # With key id: ids that don't match (LAN or bot ids) fall back to the name.
+    id_pattern: Pattern | None = None
+    # Lines matching this are never about a real player (bots).
+    ignore: Pattern | None = None
+    events: list[PlayerEvent] = []
+    status: PlayerStatus | None = None
+    kick: list[str] = []
+    bans: BanSpec | None = None
+    ip_bans: BanSpec | None = None
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "PlayersSpec":
+        for pattern in (self.id_pattern, self.ignore):
+            if pattern:
+                _compiles(pattern)
+        if self.bans and self.bans.by == "ip":
+            raise ValueError("players.bans are by name or id; addresses go in ip_bans")
+        if self.ip_bans and self.ip_bans.by != "ip":
+            self.ip_bans.by = "ip"
+        for label, spec in (("bans", self.bans), ("ip_bans", self.ip_bans)):
+            if spec and spec.by_panel and not self.kick:
+                raise ValueError(f"players.{label}.by_panel needs a kick command")
+            if spec and not (spec.add or spec.file or spec.by_panel):
+                raise ValueError(f"players.{label} needs commands, a file or by_panel")
+        return self
+
+
 class Template(StrictModel):
     id: Annotated[str, Field(pattern=r"^[a-z0-9][a-z0-9-]*$", max_length=64)]
     name: str
@@ -316,6 +441,7 @@ class Template(StrictModel):
     runtime: RuntimeSpec
     config_files: list[ConfigFile] = []
     console: ConsoleSpec = ConsoleSpec()
+    players: PlayersSpec | None = None
     backup: BackupSpec = BackupSpec()
     query: dict[str, Any] | None = None
 

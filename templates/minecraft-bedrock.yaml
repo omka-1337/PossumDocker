@@ -79,3 +79,15 @@ console:
     - { pattern: '^\[[^\]]* ERROR\]|^ERROR ', color: red }
     - { pattern: '^\[[^\]]* WARN\]|^WARN ', color: yellow }
     - { pattern: '^\[init\]|\tmc-server-runner\t', color: gray }
+
+players:
+  key: name
+  events:
+    # "Player connected: Steve, xuid: 2535416409672412"
+    - { type: join, pattern: 'Player connected: (?P<name>[^,]+), xuid: (?P<id>\d+)' }
+    - { type: leave, pattern: 'Player disconnected: (?P<name>[^,]+), xuid' }
+  kick: ['kick "{{ name }}" {{ reason or "" }}']
+  # Bedrock servers have no bans: the panel keeps the list and kicks a banned player as they join.
+  bans:
+    by: name
+    by_panel: true

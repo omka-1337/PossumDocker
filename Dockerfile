@@ -1,9 +1,11 @@
 # The panel: FastAPI serving the API and the built React UI, in one image.
 
-FROM node:26-alpine AS web
+# LTS releases only: a "current" Node has had npm bugs that break installs.
+FROM node:24-alpine AS web
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
-RUN npm ci
+# Retry downloads: on a flaky connection one failed request would otherwise fail the whole build.
+RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=5000 --fetch-retry-maxtimeout=60000
 COPY web/ ./
 RUN npm run build
 

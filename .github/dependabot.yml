@@ -27,6 +27,10 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    ignore:
+      # Types follow the Node version we build with, moved by hand from one LTS to the next.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
     groups:
       minor-and-patch:
         update-types: [minor, patch]
@@ -37,6 +41,10 @@ updates:
     target-branch: dev
     schedule:
       interval: weekly
+    ignore:
+      # Dependabot can't tell an LTS from a "current" release: Node majors are moved by hand.
+      - dependency-name: node
+        update-types: [version-update:semver-major]
 
   # They only run CI: one pull request for all of them, major versions included.
   - package-ecosystem: github-actions

@@ -3,8 +3,9 @@ name: possumdocker
 
 services:
   panel:
+    # A release pulls the published image of its version; anything else (dev) is built from this checkout.
+    image: ghcr.io/omka-1337/possumdocker-panel:${POSSUM_VERSION:-dev}
     build: .
-    image: possumdocker-panel:local
     restart: unless-stopped
     # Same user as the one who ran `make start`, so the data folder stays theirs.
     user: "${POSSUM_UID:-1000}:${POSSUM_GID:-1000}"
@@ -26,8 +27,8 @@ services:
 
   # The only part that talks to Docker. It listens on an internal network the panel alone can reach.
   agent:
+    image: ghcr.io/omka-1337/possumdocker-agent:${POSSUM_VERSION:-dev}
     build: ./agent
-    image: possumdocker-agent:local
     restart: unless-stopped
     environment:
       POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run make start}"

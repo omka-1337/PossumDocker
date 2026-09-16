@@ -101,7 +101,7 @@ Without `POSSUM_AGENT_URL` the panel talks to Docker itself, which is only meant
 
 ### Web UI
 
-Requires Node.js 26+. Run the panel first, then:
+Requires Node.js 24+. Run the panel first, then:
 
 ```bash
 cd web

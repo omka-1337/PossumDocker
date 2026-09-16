@@ -3,14 +3,17 @@ COMPOSE := docker compose
 # A terminal gets hidden password prompts; without one (scripts, CI) answers are read from stdin.
 EXEC = $(COMPOSE) exec $$([ -t 0 ] || echo -T) panel
 .DEFAULT_GOAL := help
+# On a release (the checkout is at a version tag) ready-made images are downloaded; otherwise they are built.
+VERSION := $(shell git describe --tags --exact-match 2>/dev/null | sed 's/^v//')
+export POSSUM_VERSION := $(or $(VERSION),dev)
 
 .PHONY: help start stop update logs admin
 
 help: ## Show the commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-start: .env token private ## Build and start the panel; asks for an administrator account on the first start
-	$(COMPOSE) up -d --build --remove-orphans
+start: .env token private ## Start the panel; asks for an administrator account on the first start
+	@$(MAKE) --no-print-directory up
 	@$(MAKE) --no-print-directory wait
 	@$(EXEC) python -m app.cli ensure-admin
 	@echo "The panel is running at http://localhost:$$(grep '^POSSUM_PORT=' .env | cut -d= -f2)"
@@ -20,9 +23,7 @@ stop: ## Stop the panel (game servers keep running)
 
 update: ## Pull the latest version from GitHub and restart the panel
 	@git pull --ff-only || { echo "Can't update: this copy has local changes or has diverged from GitHub."; exit 1; }
-	@$(MAKE) --no-print-directory token private
-	$(COMPOSE) up -d --build --remove-orphans
-	@$(MAKE) --no-print-directory wait
+	@$(MAKE) --no-print-directory token private up wait
 
 logs: ## Follow the panel's logs
 	$(COMPOSE) logs -f panel
@@ -56,6 +57,15 @@ private: .env
 	@mkdir -p data
 	@chmod 600 .env
 	@chmod 700 data
+
+.PHONY: up
+up:
+	@if [ "$(POSSUM_VERSION)" != dev ] && $(COMPOSE) pull --quiet panel agent; then \
+		$(COMPOSE) up -d --no-build --remove-orphans; \
+	else \
+		[ "$(POSSUM_VERSION)" = dev ] || echo "No published images for $(POSSUM_VERSION), building them here instead"; \
+		$(COMPOSE) up -d --build --remove-orphans; \
+	fi
 
 .PHONY: wait
 wait:

@@ -1,4 +1,4 @@
-import { IconBan, IconChevronDown, IconDoorExit, IconRefresh, IconUserCircle } from '@tabler/icons-react'
+import { IconBan, IconChevronDown, IconDoorExit, IconLockOpen, IconRefresh, IconUserCircle } from '@tabler/icons-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import {
   avatarUrl,
@@ -70,9 +70,14 @@ export function PlayersTab({ server }: { server: Server }) {
   // A banned player gets "unban" (their ban and their address's) instead of "ban".
   const banToggle = (player: PlayerInfo) =>
     bansOf(player).length > 0 ? (
-      <Button onClick={() => unbanPlayer(player).catch(() => {})} disabled={actions.unban.isPending}>
-        unban
-      </Button>
+      <IconButton
+        onClick={() => unbanPlayer(player).catch(() => {})}
+        disabled={actions.unban.isPending}
+        aria-label="unban"
+        title="unban"
+      >
+        <IconLockOpen size={18} />
+      </IconButton>
     ) : (
       <IconButton onClick={() => setBanning(player)} aria-label="ban" title="ban">
         <IconBan size={18} />
@@ -96,7 +101,7 @@ export function PlayersTab({ server }: { server: Server }) {
         )}
         {canBan && (
           <Button onClick={() => setBanning('manual')}>
-            <IconBan size={16} /> ban…
+            <IconBan size={16} /> ban
           </Button>
         )}
       </div>

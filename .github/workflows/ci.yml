@@ -27,7 +27,7 @@ jobs:
       run:
         working-directory: panel
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           # Same as the Docker image.
@@ -52,7 +52,7 @@ jobs:
       run:
         working-directory: agent
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: agent/go.mod
@@ -73,7 +73,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           # Same as the Docker image.
@@ -94,7 +94,7 @@ jobs:
     name: Docker images
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Panel image
         run: docker build --tag possumdocker-panel:ci .
       - name: Agent image

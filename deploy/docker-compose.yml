@@ -1,0 +1,43 @@
+# PossumDocker with Docker Compose alone, without cloning the repository or ./possum.
+# Setup: https://github.com/omka-1337/PossumDocker#install-with-docker-compose-only
+# Keep in step with the repository's docker-compose.yml, which builds the same services from source.
+name: possumdocker
+
+services:
+  panel:
+    image: ghcr.io/omka-1337/possumdocker-panel:${POSSUM_VERSION:-latest}
+    restart: unless-stopped
+    # Owner of the data folder: create it yourself first, or Docker makes it owned by root.
+    user: "${POSSUM_UID:-1000}:${POSSUM_GID:-1000}"
+    ports:
+      - "${POSSUM_PORT:-8080}:8080"
+    environment:
+      # The panel has no access to Docker at all: it asks the agent.
+      POSSUM_AGENT_URL: http://agent:8081
+      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?set POSSUM_AGENT_TOKEN in .env: openssl rand -hex 32}"
+      POSSUM_TIMEZONE: "${POSSUM_TIMEZONE:-}"
+      # Behind a reverse proxy: its address, so the panel sees visitors' real IPs and HTTPS.
+      FORWARDED_ALLOW_IPS: "${POSSUM_TRUSTED_PROXIES:-127.0.0.1}"
+    volumes:
+      # Database, backups, cache and your own game templates (templates/).
+      - "${POSSUM_DATA_DIR:-./data}:/data"
+    networks: [web, agent]
+    depends_on:
+      agent:
+        condition: service_healthy
+
+  # The only part that talks to Docker. It listens on an internal network the panel alone can reach.
+  agent:
+    image: ghcr.io/omka-1337/possumdocker-agent:${POSSUM_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?set POSSUM_AGENT_TOKEN in .env: openssl rand -hex 32}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [agent]
+
+networks:
+  web: {}
+  # No way out and no published ports.
+  agent:
+    internal: true

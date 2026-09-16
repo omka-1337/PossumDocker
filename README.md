@@ -49,6 +49,28 @@ addresses and the session cookie is marked secure on HTTPS.
 Before exposing the panel to the internet, read [SECURITY.md](SECURITY.md): use HTTPS, and only make people
 administrators you would trust with the machine.
 
+### Install with Docker Compose only
+
+For managing it yourself (plain `docker compose`, Portainer, Dockge) instead of `./possum`:
+
+```bash
+mkdir possumdocker && cd possumdocker
+curl -fsSLO https://raw.githubusercontent.com/omka-1337/PossumDocker/releases/deploy/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/omka-1337/PossumDocker/releases/deploy/.env.example -o .env
+mkdir data                                   # owned by you, not by root
+sed -i "s/^POSSUM_AGENT_TOKEN=.*/POSSUM_AGENT_TOKEN=$(openssl rand -hex 32)/" .env
+docker compose up -d
+docker compose exec panel python -m app.cli create-admin
+```
+
+Check `.env` first: port, time zone, and `POSSUM_UID`/`POSSUM_GID` if your user isn't 1000 (`id -u`, `id -g`).
+Update with `docker compose pull && docker compose up -d`. Your own game templates go in `data/templates/`.
+
+### Adding games
+
+Every game is a template: see [docs/create-game-template.md](docs/create-game-template.md), also in the panel
+under "don't see the game you need?" when creating a server.
+
 ## Development
 
 ### Panel

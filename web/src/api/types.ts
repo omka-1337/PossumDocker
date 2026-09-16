@@ -125,6 +125,16 @@ export interface Limits {
   // null: no limit
   memory_mb: number | null
   cpus: number | null
+  disk_mb: number | null
+  backups_mb: number | null
+}
+
+/** Space used against the limits, in bytes; limits null: none. */
+export interface Storage {
+  disk_used: number | null // null until the server is installed
+  disk_limit: number | null
+  backups_used: number
+  backups_limit: number | null
 }
 
 export interface Server {
@@ -148,6 +158,8 @@ export interface ServerUpdate {
   // Administrators only. null: back to the template's default, 0: no limit.
   memory_limit_mb?: number | null
   cpu_limit?: number | null
+  disk_limit_mb?: number | null
+  backup_limit_mb?: number | null
 }
 
 export interface ServerUpdateResult {
@@ -162,6 +174,9 @@ export interface ServerCreate {
   template_id: string
   name: string
   values: FieldValues
+  // Left out: the template's default; 0: no limit
+  disk_limit_mb?: number | null
+  backup_limit_mb?: number | null
 }
 
 // Config files (panel/app/api/configs.py)
@@ -215,6 +230,8 @@ export interface Backup {
 export interface BackupList {
   backups: Backup[]
   total_size: number
+  // Bytes the backups may take; null: no limit
+  limit: number | null
   // The last restore of this server failed with this message
   restore_error: string | null
 }

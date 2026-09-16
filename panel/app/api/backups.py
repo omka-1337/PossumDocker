@@ -14,7 +14,7 @@ from app.core.auth import allow
 from app.core.permissions import Permission
 from app.models import Backup, BackupStatus
 from app.runtime.docker import RuntimeUnavailable
-from app.runtime.manager import ServerBusy
+from app.runtime.manager import ServerBusy, StorageFull
 
 router = APIRouter(prefix="/servers/{server_id}/backups", tags=["backups"])
 
@@ -35,6 +35,8 @@ class BackupRead(BaseModel):
 class BackupList(BaseModel):
     backups: list[BackupRead]
     total_size: int
+    # Bytes this server's backups may take; None: no limit.
+    limit: int | None
     # The last restore of this server failed with this message.
     restore_error: str | None
 
@@ -55,6 +57,8 @@ async def get_backup_or_404(session: Session, server_id: str, backup_id: str) ->
 
 
 def _conflict(exc: Exception) -> HTTPException:
+    if isinstance(exc, StorageFull):
+        return HTTPException(507, str(exc))
     if isinstance(exc, ServerBusy):
         return HTTPException(409, str(exc))
     return HTTPException(503, f"docker: {exc}")
@@ -62,7 +66,7 @@ def _conflict(exc: Exception) -> HTTPException:
 
 @router.get("", dependencies=[allow(Permission.BACKUPS, Permission.RESTORE)])
 async def list_backups(server_id: str, session: Session, manager: Manager) -> BackupList:
-    await get_server_or_404(session, server_id)
+    server = await get_server_or_404(session, server_id)
     backups = (
         await session.scalars(
             select(Backup).where(Backup.server_id == server_id).order_by(Backup.created_at.desc())
@@ -71,6 +75,7 @@ async def list_backups(server_id: str, session: Session, manager: Manager) -> Ba
     return BackupList(
         backups=[to_read(b) for b in backups],
         total_size=sum(b.size for b in backups),
+        limit=manager.limits_of(server)[1],
         restore_error=manager.restore_errors.get(server_id),
     )
 

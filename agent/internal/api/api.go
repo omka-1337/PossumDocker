@@ -63,6 +63,8 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /v1/servers/{id}/files/copy", s.copy)
 	api.HandleFunc("POST /v1/servers/{id}/files/delete", s.delete)
 	api.HandleFunc("POST /v1/servers/{id}/files/extract", s.extract)
+	api.HandleFunc("POST /v1/servers/{id}/files/usage", s.usage)
+	api.HandleFunc("GET /v1/servers/{id}/files/unpacked-size", s.unpackedSize)
 	api.HandleFunc("GET /v1/servers/{id}/files/text", s.readText)
 	api.HandleFunc("PUT /v1/servers/{id}/files/text", s.writeText)
 	api.HandleFunc("POST /v1/servers/{id}/files/upload", s.upload)

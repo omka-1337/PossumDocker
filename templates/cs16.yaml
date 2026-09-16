@@ -68,6 +68,8 @@ runtime:
     timeout: 15
   data_path: /data
   resources:
+    # The game itself is about 900 MB.
+    disk_mb: "2048"
     # HLDS itself needs well under 100 MB; room for AMX Mod X and plugins.
     memory_mb: "512"
 

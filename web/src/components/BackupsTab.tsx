@@ -25,7 +25,8 @@ export function BackupsTab({ server, canBackup, canRestore }: { server: Server; 
   if (isPending) return <p className="text-sm text-muted">loading…</p>
   if (isError) return <p className="text-sm text-red-400">{error.message}</p>
 
-  const { backups, total_size: totalSize, restore_error: restoreError } = data
+  const { backups, total_size: totalSize, limit, restore_error: restoreError } = data
+  const full = limit !== null && totalSize >= limit
   const actionError = actions.create.error ?? actions.restore.error ?? actions.remove.error
 
   return (
@@ -33,6 +34,13 @@ export function BackupsTab({ server, canBackup, canRestore }: { server: Server; 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <p className="flex-1 text-sm text-muted">
           {backups.length} {backups.length === 1 ? 'backup' : 'backups'} · {formatSize(totalSize)}
+          {limit !== null && (
+            <span className={full ? 'text-amber-300' : ''}>
+              {' '}
+              of {formatSize(limit)}
+              {full && ': full, delete old backups to make new ones'}
+            </span>
+          )}
         </p>
         {canBackup && (
           <Button variant="primary" onClick={() => setCreating(true)}>

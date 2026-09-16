@@ -124,6 +124,26 @@ def effective_limits(template: Template, server: Server) -> tuple[int | None, fl
     return memory, cpus
 
 
+def default_disk_mb(template: Template, values: dict) -> int | None:
+    if not template.runtime.resources.disk_mb:
+        return None
+    return int(float(_render(template.runtime.resources.disk_mb, values, strict=True)))
+
+
+def storage_limits(template: Template, server: Server) -> tuple[int | None, int | None]:
+    """Disk and backup space in MB for this server; None: no limit.
+
+    Backups default to twice the disk limit: a few full copies of the server.
+    """
+    disk = default_disk_mb(template, server.values)
+    if server.disk_limit_mb is not None:
+        disk = server.disk_limit_mb or None
+    backups = disk * 2 if disk else None
+    if server.backup_limit_mb is not None:
+        backups = server.backup_limit_mb or None
+    return disk, backups
+
+
 def build_spec(template: Template, server: Server, templates_dir: Path) -> ServerSpec:
     context = {
         **server.values,

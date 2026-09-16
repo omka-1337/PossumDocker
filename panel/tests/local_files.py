@@ -101,6 +101,15 @@ class LocalFiles:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(upload.file.read())
 
+    async def usage(self, server_id, paths):
+        targets = [self._path(server_id, p) for p in paths] or [self._path(server_id, "")]
+        files = {f for t in targets for f in ([t] if t.is_file() else t.rglob("*")) if f.is_file()}
+        return sum(f.stat().st_size for f in files)
+
+    async def unpacked_size(self, server_id, path):
+        with zipfile.ZipFile(self._path(server_id, path)) as archive:
+            return sum(info.file_size for info in archive.infolist())
+
     async def extract(self, server_id, path):
         rel = resolve(path)
         target = rel[:-4]

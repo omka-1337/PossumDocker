@@ -602,6 +602,51 @@ func rewriteUpload(in io.Reader, out io.Writer, uid, gid int) error {
 	}
 }
 
+// Usage is how many bytes the paths take on disk; no paths: the whole volume. Something counted twice
+// (a folder and a file inside it) counts once.
+func (f *Files) Usage(ctx context.Context, serverID string, paths []string) (int64, error) {
+	cmd := []string{"du", "-skc"}
+	if len(paths) == 0 {
+		cmd = append(cmd, Root)
+	}
+	for _, p := range paths {
+		cmd = append(cmd, abs(p))
+	}
+	out, err := f.run(ctx, serverID, cmd...)
+	if err != nil {
+		return 0, err
+	}
+	return lastNumber(out, 1024)
+}
+
+// UnpackedSize is what a .zip says its files add up to. A crafted archive can lie; the caller checks
+// the space actually used afterwards too.
+func (f *Files) UnpackedSize(ctx context.Context, serverID, p string) (int64, error) {
+	if _, err := f.require(ctx, serverID, Resolve(p), "file"); err != nil {
+		return 0, err
+	}
+	// The last line of "unzip -l": "  5000002                     2 files"
+	out, err := f.run(ctx, serverID, "unzip", "-l", abs(p))
+	if err != nil {
+		return 0, newError(http.StatusBadRequest, "not a readable .zip archive")
+	}
+	return lastNumber(out, 1)
+}
+
+// lastNumber reads the first field of the last line, times unit.
+func lastNumber(out []byte, unit int64) (int64, error) {
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	fields := strings.Fields(lines[len(lines)-1])
+	if len(fields) == 0 {
+		return 0, fmt.Errorf("unexpected output %q", out)
+	}
+	n, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("unexpected output %q", out)
+	}
+	return n * unit, nil
+}
+
 // Extract unzips an archive next to it, into a folder named after it, and returns that folder.
 func (f *Files) Extract(ctx context.Context, serverID, p string) (string, error) {
 	rel := Resolve(p)

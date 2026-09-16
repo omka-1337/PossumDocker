@@ -326,6 +326,27 @@ func (s *Server) extract(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type sizeBody struct {
+	Bytes int64 `json:"bytes"`
+}
+
+func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Paths []string `json:"paths"`
+	}
+	s.fileCall(w, r, &body, func(id string) (any, error) {
+		n, err := s.files.Usage(r.Context(), id, body.Paths)
+		return sizeBody{n}, err
+	})
+}
+
+func (s *Server) unpackedSize(w http.ResponseWriter, r *http.Request) {
+	s.fileCall(w, r, nil, func(id string) (any, error) {
+		n, err := s.files.UnpackedSize(r.Context(), id, r.URL.Query().Get("path"))
+		return sizeBody{n}, err
+	})
+}
+
 func (s *Server) readText(w http.ResponseWriter, r *http.Request) {
 	s.fileCall(w, r, nil, func(id string) (any, error) {
 		content, err := s.files.ReadText(r.Context(), id, r.URL.Query().Get("path"))

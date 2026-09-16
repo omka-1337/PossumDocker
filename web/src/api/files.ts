@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError, CSRF_HEADERS } from './client'
 
 // Mirrors panel/app/api/files.py. Paths are relative to the server's data volume, '' is the root.
@@ -48,14 +48,20 @@ function useFileMutation<T>(serverId: string, action: string, body: (arg: T) => 
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (arg: T) => post(`${base(serverId)}/${action}`, body(arg)),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: filesKey(serverId) }),
+    onSettled: () => refreshFiles(queryClient, serverId),
   })
+}
+
+function refreshFiles(queryClient: QueryClient, serverId: string) {
+  queryClient.invalidateQueries({ queryKey: filesKey(serverId) })
+  // The space used changes with the files.
+  queryClient.invalidateQueries({ queryKey: ['servers', serverId, 'storage'] })
 }
 
 export function useFileActions(serverId: string) {
   const queryClient = useQueryClient()
   return {
-    refresh: () => queryClient.invalidateQueries({ queryKey: filesKey(serverId) }),
+    refresh: () => refreshFiles(queryClient, serverId),
     mkdir: useFileMutation(serverId, 'mkdir', (path: string) => ({ path })),
     rename: useFileMutation(serverId, 'rename', (arg: { path: string; name: string }) => arg),
     move: useFileMutation(serverId, 'move', (arg: Transfer) => arg),

@@ -231,6 +231,15 @@ class AgentFiles:
     async def delete(self, server_id: str, paths: list[str]) -> None:
         await self._post(server_id, "/delete", {"paths": paths})
 
+    async def usage(self, server_id: str, paths: list[str]) -> int:
+        return (await self._post(server_id, "/usage", {"paths": paths})).json()["bytes"]
+
+    async def unpacked_size(self, server_id: str, path: str) -> int:
+        response = await self.agent.request(
+            "GET", self._url(server_id, "/unpacked-size"), params={"path": path}
+        )
+        return response.json()["bytes"]
+
     async def extract(self, server_id: str, path: str) -> str:
         return (await self._post(server_id, "/extract", {"path": path})).json()["path"]
 

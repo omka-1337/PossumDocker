@@ -223,7 +223,13 @@ def test_servers_that_were_running_start_again_with_the_panel(client, runtime):
 def test_resource_limits(client, runtime):
     server = create_installed(client, "cs16")
     url = f"/api/servers/{server['id']}"
-    assert server["limits"] == {"memory_mb": None, "cpus": None, "default": {"memory_mb": 512, "cpus": None}}
+    assert server["limits"] == {
+        "memory_mb": None,
+        "cpus": None,
+        "disk_mb": None,
+        "backups_mb": None,
+        "default": {"memory_mb": 512, "cpus": None, "disk_mb": 2048, "backups_mb": 4096},
+    }
 
     client.post(f"{url}/start")
     resp = client.patch(url, json={"memory_limit_mb": 1024, "cpu_limit": 2})

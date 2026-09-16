@@ -86,6 +86,9 @@ class Server(Base):
     # Set by an administrator; None: the template's default, 0: no limit.
     memory_limit_mb: Mapped[int | None] = mapped_column(Integer, default=None)
     cpu_limit: Mapped[float | None] = mapped_column(Float, default=None)
+    # Soft limits on disk space, same rule: None follows the template (backups: twice the disk), 0 none.
+    disk_limit_mb: Mapped[int | None] = mapped_column(Integer, default=None)
+    backup_limit_mb: Mapped[int | None] = mapped_column(Integer, default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 

@@ -90,3 +90,17 @@ func TestUploadRejectsEscapesAndLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestLastNumber(t *testing.T) {
+	du := "300\t/data/a\n4\t/data\n304\ttotal\n"
+	if n, err := lastNumber([]byte(du), 1024); err != nil || n != 304*1024 {
+		t.Errorf("du: %d, %v", n, err)
+	}
+	unzip := "Archive:  x.zip\n  Length  Name\n  5000000  a/big.bin\n --------  -------\n  5000002  2 files\n"
+	if n, err := lastNumber([]byte(unzip), 1); err != nil || n != 5000002 {
+		t.Errorf("unzip: %d, %v", n, err)
+	}
+	if _, err := lastNumber([]byte("du: /nope: No such file"), 1); err == nil {
+		t.Error("garbage accepted")
+	}
+}

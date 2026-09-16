@@ -11,34 +11,53 @@ from app.core.auth import CurrentUser, allow, require_admin, visible_server_ids
 from app.core.permissions import Permission
 from app.games.schema import Template
 from app.games.validation import ValuesError, public_values, validate_values
-from app.models import Server
+from app.models import Server, ServerState
 from app.runtime.docker import RuntimeUnavailable
+from app.runtime.files import FileError
 from app.runtime.manager import ServerBusy, ServerStatus, StatusInfo
 from app.runtime.ports import allocate_ports
-from app.runtime.spec import MIN_MEMORY_MB, default_limits
+from app.runtime.spec import MIN_MEMORY_MB, default_disk_mb, default_limits, storage_limits
 
 router = APIRouter(prefix="/servers", tags=["servers"])
 AdminOnly = Depends(require_admin)
+
+MIN_DISK_MB = 100
+# null: the template's default (backups: twice the disk limit); 0: no limit.
+DiskLimit = Field(default=None, ge=0, le=1024 * 1024 * 1024)
 
 
 class ServerCreate(BaseModel):
     template_id: str
     name: str = Field(min_length=1, max_length=64)
     values: dict[str, Any] = {}
+    disk_limit_mb: int | None = DiskLimit
+    backup_limit_mb: int | None = DiskLimit
 
 
 class Limits(BaseModel):
     # None: no limit.
     memory_mb: int | None
     cpus: float | None
+    disk_mb: int | None
+    backups_mb: int | None
 
 
 class ServerLimits(BaseModel):
-    # Set by an administrator for this server: None follows the template, 0 is "no limit".
+    # Set by an administrator for this server: None follows the default, 0 is "no limit".
     memory_mb: int | None
     cpus: float | None
-    # What the template would give.
+    disk_mb: int | None
+    backups_mb: int | None
+    # What the server gets without them: the template's values, backups twice the disk limit.
     default: Limits
+
+
+class StorageRead(BaseModel):
+    # Bytes; limits None: no limit. disk_used None: the server isn't installed.
+    disk_used: int | None
+    disk_limit: int | None
+    backups_used: int
+    backups_limit: int | None
 
 
 class ServerRead(BaseModel):
@@ -64,6 +83,8 @@ class ServerUpdate(BaseModel):
     # Administrators only. null: back to the template's default; 0: no limit.
     memory_limit_mb: int | None = Field(default=None, ge=0, le=1024 * 1024)
     cpu_limit: float | None = Field(default=None, ge=0, le=1024)
+    disk_limit_mb: int | None = DiskLimit
+    backup_limit_mb: int | None = DiskLimit
 
 
 class ServerUpdateResult(BaseModel):
@@ -74,12 +95,27 @@ class ServerUpdateResult(BaseModel):
     reinstalling: bool
 
 
-def _default_limits(template: Template | None, values: dict[str, Any]) -> Limits:
+def _default_limits(template: Template | None, server: Server) -> Limits:
+    memory = cpus = disk = backups = None
     try:
-        memory, cpus = default_limits(template, values) if template else (None, None)
+        if template:
+            memory, cpus = default_limits(template, server.values)
+            disk = default_disk_mb(template, server.values)
+            effective_disk, _ = storage_limits(template, server)
+            backups = effective_disk * 2 if effective_disk else None
     except Exception:  # a broken template expression shouldn't hide the server
-        memory, cpus = None, None
-    return Limits(memory_mb=memory, cpus=cpus)
+        pass
+    return Limits(memory_mb=memory, cpus=cpus, disk_mb=disk, backups_mb=backups)
+
+
+def _limit_errors(body: BaseModel) -> dict[str, str]:
+    errors = {}
+    if getattr(body, "memory_limit_mb", None) and body.memory_limit_mb < MIN_MEMORY_MB:
+        errors["memory_limit_mb"] = f"at least {MIN_MEMORY_MB} MB, or 0 for no limit"
+    for key in ("disk_limit_mb", "backup_limit_mb"):
+        if getattr(body, key) and getattr(body, key) < MIN_DISK_MB:
+            errors[key] = f"at least {MIN_DISK_MB} MB, or 0 for no limit"
+    return errors
 
 
 def to_read(server: Server, templates: Templates, info: StatusInfo) -> ServerRead:
@@ -95,7 +131,9 @@ def to_read(server: Server, templates: Templates, info: StatusInfo) -> ServerRea
         limits=ServerLimits(
             memory_mb=server.memory_limit_mb,
             cpus=server.cpu_limit,
-            default=_default_limits(template, server.values),
+            disk_mb=server.disk_limit_mb,
+            backups_mb=server.backup_limit_mb,
+            default=_default_limits(template, server),
         ),
         created_at=server.created_at,
     )
@@ -131,6 +169,8 @@ async def create_server(
     template = require_template(templates, body.template_id)
     try:
         values = await validate_values(template, body.values, providers)
+        if limit_errors := _limit_errors(body):
+            raise ValuesError(limit_errors)
     except ValuesError as exc:
         # Keyed by field id so the form can show each message under its input.
         raise HTTPException(422, {"errors": exc.errors}) from exc
@@ -155,7 +195,14 @@ async def create_server(
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
 
-    server = Server(name=body.name.strip(), template_id=template.id, values=values, ports=ports)
+    server = Server(
+        name=body.name.strip(),
+        template_id=template.id,
+        values=values,
+        ports=ports,
+        disk_limit_mb=body.disk_limit_mb,
+        backup_limit_mb=body.backup_limit_mb,
+    )
     session.add(server)
     await session.commit()
 
@@ -181,13 +228,11 @@ async def update_server(
     server = await get_server_or_404(session, server_id)
     template = require_template(templates, server.template_id)
 
-    limit_keys = body.model_fields_set & {"memory_limit_mb", "cpu_limit"}
+    limit_keys = body.model_fields_set & {"memory_limit_mb", "cpu_limit", "disk_limit_mb", "backup_limit_mb"}
     if limit_keys and not user.is_admin:
         raise HTTPException(403, "only administrators can change resource limits")
-    if body.memory_limit_mb and body.memory_limit_mb < MIN_MEMORY_MB:
-        raise HTTPException(
-            422, {"errors": {"memory_limit_mb": f"at least {MIN_MEMORY_MB} MB, or 0 for no limit"}}
-        )
+    if limit_errors := _limit_errors(body):
+        raise HTTPException(422, {"errors": limit_errors})
 
     errors = {}
     for key in body.values:
@@ -225,6 +270,12 @@ async def update_server(
     if "cpu_limit" in limit_keys:
         server.cpu_limit = body.cpu_limit
     limits_changed = (server.memory_limit_mb, server.cpu_limit) != limits_before
+    # Disk limits are checked by the panel, not Docker: they apply at once, no restart.
+    if "disk_limit_mb" in limit_keys:
+        server.disk_limit_mb = body.disk_limit_mb
+        manager.disk_errors.pop(server.id, None)
+    if "backup_limit_mb" in limit_keys:
+        server.backup_limit_mb = body.backup_limit_mb
     await session.commit()
 
     reinstalling = "reinstall" in effects
@@ -234,6 +285,28 @@ async def update_server(
         server=await read_one(server, templates, manager),
         restart_required=running and ("restart" in effects or limits_changed),
         reinstalling=reinstalling,
+    )
+
+
+@router.get(
+    "/{server_id}/storage",
+    dependencies=[allow(Permission.FILES, Permission.BACKUPS, Permission.SETTINGS)],
+)
+async def get_storage(server_id: str, session: Session, manager: Manager) -> StorageRead:
+    """Space used against the limits. Measuring a big server takes a moment."""
+    server = await get_server_or_404(session, server_id)
+    disk_limit, backups_limit = manager.limits_of(server)
+    disk_used = None
+    if server.state == ServerState.INSTALLED:
+        try:
+            disk_used = await manager.disk_usage(server)
+        except (FileError, RuntimeUnavailable, DockerError) as exc:
+            raise HTTPException(503, f"could not measure the server: {exc}") from exc
+    return StorageRead(
+        disk_used=disk_used,
+        disk_limit=disk_limit,
+        backups_used=await manager.backup_usage(server.id),
+        backups_limit=backups_limit,
     )
 
 

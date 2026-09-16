@@ -1,9 +1,10 @@
 import { IconRefresh } from '@tabler/icons-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
-import { useConfigs, useServerAction, useTemplate, useUpdateServer } from '../api/queries'
+import { useConfigs, useServerAction, useStorage, useTemplate, useUpdateServer } from '../api/queries'
 import type { FieldValues, Server, TemplateDetail, TemplateField } from '../api/types'
 import { initialValues, isVisible } from '../lib/fields'
+import { formatSize } from '../lib/format'
 import { ConfigEditor } from './ConfigEditor'
 import { FieldError, FieldInput, inputClass } from './FieldInput'
 import { Button } from './ui'
@@ -77,7 +78,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   )
 }
 
-const describeMemory = (mb: number | null) => (mb ? `${mb} MB` : 'no limit')
+const describeMb = (mb: number | null) => (mb ? `${mb} MB` : 'no limit')
 const describeCpus = (cpus: number | null) => (cpus ? `${cpus} ${cpus === 1 ? 'core' : 'cores'}` : 'no limit')
 
 // Input text for a saved limit: empty follows the template.
@@ -85,63 +86,92 @@ const asText = (value: number | null) => (value === null ? '' : String(value))
 const fromText = (text: string) => (text.trim() === '' ? null : Number(text))
 
 /** Memory and CPU caps for the container. Only administrators see and change these. */
+type LimitKey = 'memory_limit_mb' | 'cpu_limit' | 'disk_limit_mb' | 'backup_limit_mb'
+
+interface LimitInput {
+  key: LimitKey
+  label: string
+  step: number
+  saved: number | null
+  placeholder: string
+}
+
+/** Memory, CPU and disk caps. Only administrators see and change these. */
 function ResourceLimits({ server, onRestartNeeded }: { server: Server; onRestartNeeded: () => void }) {
   const { limits } = server
-  const [memory, setMemory] = useState(asText(limits.memory_mb))
-  const [cpus, setCpus] = useState(asText(limits.cpus))
+  const { data: storage } = useStorage(server.id)
+  const inputs: LimitInput[] = [
+    {
+      key: 'memory_limit_mb',
+      label: 'memory (MB)',
+      step: 128,
+      saved: limits.memory_mb,
+      placeholder: describeMb(limits.default.memory_mb),
+    },
+    { key: 'cpu_limit', label: 'cpu cores', step: 0.5, saved: limits.cpus, placeholder: describeCpus(limits.default.cpus) },
+    {
+      key: 'disk_limit_mb',
+      label: 'disk (MB)',
+      step: 1024,
+      saved: limits.disk_mb,
+      placeholder: describeMb(limits.default.disk_mb),
+    },
+    {
+      key: 'backup_limit_mb',
+      label: 'backups (MB)',
+      step: 1024,
+      saved: limits.backups_mb,
+      placeholder: describeMb(limits.default.backups_mb),
+    },
+  ]
+  const savedTexts = () => Object.fromEntries(inputs.map((i) => [i.key, asText(i.saved)])) as Record<LimitKey, string>
+  const [texts, setTexts] = useState(savedTexts)
   const update = useUpdateServer(server.id)
   const fieldErrors = update.error instanceof ApiError ? update.error.fieldErrors : {}
 
-  const dirty = memory !== asText(limits.memory_mb) || cpus !== asText(limits.cpus)
-  const invalid = [memory, cpus].some((text) => text.trim() !== '' && !(Number(text) >= 0))
+  const changed = inputs.filter((i) => texts[i.key] !== asText(i.saved))
+  const invalid = Object.values(texts).some((text) => text.trim() !== '' && !(Number(text) >= 0))
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    update.mutate(
-      { memory_limit_mb: fromText(memory), cpu_limit: fromText(cpus) },
-      { onSuccess: (result) => result.restart_required && onRestartNeeded() },
-    )
+    update.mutate(Object.fromEntries(changed.map((i) => [i.key, fromText(texts[i.key])])), {
+      onSuccess: (result) => result.restart_required && onRestartNeeded(),
+    })
   }
 
   return (
     <form onSubmit={submit} className="space-y-5">
       <p className="text-sm text-muted">
-        empty follows the game&apos;s default, 0 removes the limit. a server that goes over its memory is stopped and
-        restarted.
+        empty follows the game&apos;s default, 0 removes the limit. a server that runs out of memory is stopped and
+        restarted. disk space is checked by the panel: uploads and unpacking that don&apos;t fit are refused, and a
+        server that grows past its limit is stopped. backups default to twice the disk limit.
       </p>
+      {storage && (storage.disk_used !== null || storage.backups_used > 0) && (
+        <p className="text-sm">
+          {storage.disk_used !== null && <>files: {formatSize(storage.disk_used)}</>}
+          {storage.disk_used !== null && ' · '}
+          backups: {formatSize(storage.backups_used)}
+        </p>
+      )}
       <div className="grid gap-5 sm:grid-cols-2">
-        <div>
-          <label htmlFor="limit-memory" className="mb-1.5 block text-sm font-medium">
-            memory (MB)
-          </label>
-          <input
-            id="limit-memory"
-            type="number"
-            min={0}
-            step={128}
-            className={inputClass}
-            value={memory}
-            placeholder={`default: ${describeMemory(limits.default.memory_mb)}`}
-            onChange={(e) => setMemory(e.target.value)}
-          />
-          <FieldError error={fieldErrors.memory_limit_mb} />
-        </div>
-        <div>
-          <label htmlFor="limit-cpus" className="mb-1.5 block text-sm font-medium">
-            cpu cores
-          </label>
-          <input
-            id="limit-cpus"
-            type="number"
-            min={0}
-            step={0.5}
-            className={inputClass}
-            value={cpus}
-            placeholder={`default: ${describeCpus(limits.default.cpus)}`}
-            onChange={(e) => setCpus(e.target.value)}
-          />
-          <FieldError error={fieldErrors.cpu_limit} />
-        </div>
+        {inputs.map((input) => (
+          <div key={input.key}>
+            <label htmlFor={`limit-${input.key}`} className="mb-1.5 block text-sm font-medium">
+              {input.label}
+            </label>
+            <input
+              id={`limit-${input.key}`}
+              type="number"
+              min={0}
+              step={input.step}
+              className={inputClass}
+              value={texts[input.key]}
+              placeholder={`default: ${input.placeholder}`}
+              onChange={(e) => setTexts((prev) => ({ ...prev, [input.key]: e.target.value }))}
+            />
+            <FieldError error={fieldErrors[input.key]} />
+          </div>
+        ))}
       </div>
 
       {update.error && Object.keys(fieldErrors).length === 0 && (
@@ -149,15 +179,14 @@ function ResourceLimits({ server, onRestartNeeded }: { server: Server; onRestart
       )}
 
       <div className="flex gap-2">
-        <Button type="submit" variant="primary" disabled={!dirty || invalid || update.isPending}>
+        <Button type="submit" variant="primary" disabled={changed.length === 0 || invalid || update.isPending}>
           {update.isPending ? 'saving…' : 'save'}
         </Button>
-        {dirty && (
+        {changed.length > 0 && (
           <Button
             type="button"
             onClick={() => {
-              setMemory(asText(limits.memory_mb))
-              setCpus(asText(limits.cpus))
+              setTexts(savedTexts())
               update.reset()
             }}
           >

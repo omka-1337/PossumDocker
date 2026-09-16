@@ -42,6 +42,9 @@ runtime:
     command: /quit
     timeout: 60
   data_path: /factorio
+  resources:
+    # The game is in the image; this is saves and mods.
+    disk_mb: "2048"
 
 config_files:
   - id: server_settings

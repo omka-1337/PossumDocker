@@ -43,6 +43,8 @@ runtime:
     command: stop
     timeout: 30
   data_path: /data
+  resources:
+    disk_mb: "4096"
 
 config_files:
   - id: server_properties

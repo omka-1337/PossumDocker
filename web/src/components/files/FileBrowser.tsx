@@ -43,6 +43,7 @@ import {
   type FileEntry,
   type UploadItem,
 } from '../../api/files'
+import { useStorage } from '../../api/queries'
 import { collectDropped } from '../../lib/dropped'
 import { formatSize } from '../../lib/format'
 import { useStoredState } from '../../lib/storage'
@@ -530,6 +531,7 @@ export function FileBrowser({ serverId }: { serverId: string }) {
           </span>
         )}
         {isFetching && <span>loading…</span>}
+        <StorageUsed serverId={serverId} />
       </div>
 
       {(uploads.length > 0 || actionError) && (
@@ -678,5 +680,17 @@ function NewFolderDialog({ onClose, onCreate }: { onClose: () => void; onCreate:
         </Button>
       </form>
     </Modal>
+  )
+}
+
+/** "1.2 GiB of 10 GiB": a server with a disk limit shows how close it is. */
+function StorageUsed({ serverId }: { serverId: string }) {
+  const { data } = useStorage(serverId)
+  if (!data || data.disk_used === null || data.disk_limit === null) return null
+  const share = data.disk_used / data.disk_limit
+  return (
+    <span className={`shrink-0 ${share >= 0.9 ? 'text-amber-300' : ''}`} title="disk space of this server">
+      {formatSize(data.disk_used)} of {formatSize(data.disk_limit)}
+    </span>
   )
 }

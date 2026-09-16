@@ -89,6 +89,8 @@ runtime:
     timeout: 60
   data_path: /data
   resources:
+    # Worlds grow as players explore; mods and plugins add up too.
+    disk_mb: "10240"
     # The heap plus what Java needs outside it (threads, native memory, the JIT).
     memory_mb: "{{ memory_mb + [memory_mb // 4, 768] | max }}"
 

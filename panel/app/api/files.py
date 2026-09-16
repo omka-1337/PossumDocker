@@ -4,9 +4,10 @@ from typing import Annotated
 from urllib.parse import quote
 
 from aiodocker.exceptions import DockerError
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.datastructures import UploadFile
 
 from app.api.deps import Manager, Session
 from app.api.servers import get_server_or_404
@@ -15,6 +16,7 @@ from app.core.permissions import Permission
 from app.models import ServerState
 from app.runtime.docker import RuntimeUnavailable
 from app.runtime.files import FileEntry, FileError, Upload, resolve
+from app.runtime.manager import StorageFull
 
 router = APIRouter(
     prefix="/servers/{server_id}/files", tags=["files"], dependencies=[allow(Permission.FILES)]
@@ -54,10 +56,15 @@ class ContentRead(BaseModel):
     content: str
 
 
-async def _files(server_id: str, session: Session, manager: Manager):
+async def _server(server_id: str, session: Session):
     server = await get_server_or_404(session, server_id)
     if server.state != ServerState.INSTALLED:
         raise HTTPException(409, "files are available once the server is installed")
+    return server
+
+
+async def _files(server_id: str, session: Session, manager: Manager):
+    await _server(server_id, session)
     return manager.runtime.files
 
 
@@ -70,6 +77,8 @@ class _Errors:
     async def __aexit__(self, exc_type, exc, tb):
         if isinstance(exc, FileError):
             raise HTTPException(exc.status, str(exc)) from exc
+        if isinstance(exc, StorageFull):
+            raise HTTPException(507, str(exc)) from exc
         if isinstance(exc, RuntimeUnavailable | DockerError):
             raise HTTPException(503, f"docker: {exc}") from exc
         return False
@@ -111,8 +120,11 @@ async def move(server_id: str, body: TransferBody, session: Session, manager: Ma
 
 @router.post("/copy", status_code=status.HTTP_204_NO_CONTENT)
 async def copy(server_id: str, body: TransferBody, session: Session, manager: Manager) -> None:
-    files = await _files(server_id, session, manager)
+    server = await _server(server_id, session)
+    files = manager.runtime.files
     async with errors:
+        if manager.limits_of(server)[0] is not None:
+            await manager.require_space(server, await files.usage(server_id, body.sources))
         await files.copy(server_id, body.sources, body.destination)
 
 
@@ -125,9 +137,19 @@ async def delete(server_id: str, body: DeleteBody, session: Session, manager: Ma
 
 @router.post("/extract")
 async def extract(server_id: str, body: PathBody, session: Session, manager: Manager) -> PathBody:
-    files = await _files(server_id, session, manager)
+    server = await _server(server_id, session)
+    files = manager.runtime.files
     async with errors:
-        return PathBody(path=await files.extract(server_id, body.path))
+        limited = manager.limits_of(server)[0] is not None
+        if limited:
+            # What the archive says it holds first; a zip bomb usually tells the truth about that.
+            await manager.require_space(server, await files.unpacked_size(server_id, body.path))
+        target = await files.extract(server_id, body.path)
+        if limited and (problem := await manager.check_disk(server)):
+            # It lied: the files came out bigger. Take them away again.
+            await files.delete(server_id, [target])
+            raise StorageFull(f"the unpacked archive took the server {problem}")
+        return PathBody(path=target)
 
 
 @router.get("/content")
@@ -139,28 +161,63 @@ async def read_content(server_id: str, path: str, session: Session, manager: Man
 
 @router.put("/content", status_code=status.HTTP_204_NO_CONTENT)
 async def write_content(server_id: str, body: ContentBody, session: Session, manager: Manager) -> None:
-    files = await _files(server_id, session, manager)
+    server = await _server(server_id, session)
+    files = manager.runtime.files
     async with errors:
+        if manager.limits_of(server)[0] is not None:
+            await manager.require_space(server, len(body.content.encode()))
         await files.write_text(server_id, body.path, body.content)
 
 
-@router.post("/upload", status_code=status.HTTP_204_NO_CONTENT)
-async def upload(
-    server_id: str,
-    session: Session,
-    manager: Manager,
-    files: Annotated[list[UploadFile], File()],
-    # Relative path per file, same order: dropped folders keep their structure.
-    paths: Annotated[list[str], Form()],
-    # An empty form value arrives as missing, so the root is the default.
-    directory: Annotated[str, Form()] = "",
-) -> None:
-    if len(paths) != len(files):
-        raise HTTPException(422, "every file needs a path")
-    file_ops = await _files(server_id, session, manager)
-    uploads = [Upload(path=p, file=f.file) for p, f in zip(paths, files, strict=True)]
+MAX_UPLOAD_FILES = 10_000
+
+
+@router.post(
+    "/upload",
+    status_code=status.HTTP_204_NO_CONTENT,
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "files": {"type": "array", "items": {"type": "string", "format": "binary"}},
+                            # Relative path per file, same order: dropped folders keep their structure.
+                            "paths": {"type": "array", "items": {"type": "string"}},
+                            "directory": {"type": "string"},
+                        },
+                    }
+                }
+            }
+        }
+    },
+)
+async def upload(server_id: str, request: Request, session: Session, manager: Manager) -> None:
+    server = await _server(server_id, session)
+    file_ops = manager.runtime.files
     async with errors:
-        await file_ops.upload(server_id, directory, uploads)
+        if manager.limits_of(server)[0] is not None:
+            # Before reading the body: a form is saved to the panel's disk while it's parsed, so a
+            # too-big upload has to be turned away by its announced size.
+            try:
+                announced = int(request.headers["content-length"])
+            except (KeyError, ValueError):
+                raise HTTPException(411, "uploads need a Content-Length") from None
+            await manager.require_space(server, announced)
+
+        form = await request.form(max_files=MAX_UPLOAD_FILES, max_fields=MAX_UPLOAD_FILES + 10)
+        try:
+            files = [f for f in form.getlist("files") if isinstance(f, UploadFile)]
+            paths = [p for p in form.getlist("paths") if isinstance(p, str)]
+            directory = form.get("directory")
+            if not files or len(paths) != len(files):
+                raise HTTPException(422, "every file needs a path")
+            uploads = [Upload(path=p, file=f.file) for p, f in zip(paths, files, strict=True)]
+            # An empty form value is the root.
+            await file_ops.upload(server_id, directory if isinstance(directory, str) else "", uploads)
+        finally:
+            await form.close()
 
 
 def _attachment(filename: str) -> dict[str, str]:

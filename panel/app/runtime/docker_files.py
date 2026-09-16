@@ -293,6 +293,19 @@ class DockerFiles:
                 upload.file.seek(0)
                 tar.addfile(self._tar_info(rel, size, owner), upload.file)
 
+    async def usage(self, server_id: str, paths: list[str]) -> int:
+        out = await self._exec(server_id, "du", "-skc", *([_abs(p) for p in paths] or [_abs("")]))
+        return int(out.decode().strip().splitlines()[-1].split()[0]) * 1024
+
+    async def unpacked_size(self, server_id: str, path: str) -> int:
+        await self._require(server_id, path, "file")
+        try:
+            out = await self._exec(server_id, "unzip", "-l", _abs(path))
+            # The last line of "unzip -l": "  5000002                     2 files"
+            return int(out.decode().strip().splitlines()[-1].split()[0])
+        except (FileError, ValueError, IndexError) as exc:
+            raise FileError("not a readable .zip archive") from exc
+
     async def extract(self, server_id: str, path: str) -> str:
         """Unzip next to the archive, into a folder named after it. Returns that folder."""
         rel = resolve(path)

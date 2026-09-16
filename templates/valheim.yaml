@@ -69,6 +69,9 @@ runtime:
   mounts:
     - { subpath: config, path: /config }
     - { subpath: server, path: /opt/valheim }
+  resources:
+    # The server is kept twice (download and running copy), about 2 GB together.
+    disk_mb: "6144"
 
 backup:
   paths:

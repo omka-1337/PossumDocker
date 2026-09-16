@@ -9,6 +9,7 @@ import {
   type ConfigSummary,
   type ServerStatus,
   type ServerUpdate,
+  type Storage,
   type Option,
   type Server,
   type ServerCreate,
@@ -29,6 +30,7 @@ const keys = {
   configs: (id: string) => ['servers', id, 'configs'] as const,
   config: (id: string, configId: string) => ['servers', id, 'configs', configId] as const,
   backups: (id: string) => ['servers', id, 'backups'] as const,
+  storage: (id: string) => ['servers', id, 'storage'] as const,
   schedules: (id: string) => ['servers', id, 'schedules'] as const,
   meta: ['meta'] as const,
 }
@@ -107,6 +109,7 @@ function useUpdateServerCache() {
     queryClient.setQueryData(keys.server(server.id), server)
     queryClient.invalidateQueries({ queryKey: keys.servers, exact: true })
     queryClient.invalidateQueries({ queryKey: keys.installLog(server.id) })
+    queryClient.invalidateQueries({ queryKey: keys.storage(server.id) })
   }
 }
 
@@ -135,6 +138,15 @@ export function useUpdateServer(id: string) {
     mutationFn: (body: ServerUpdate) =>
       api<ServerUpdateResult>(`/servers/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: (result) => update(result.server),
+  })
+}
+
+/** Measuring walks every file of the server: fetched on demand, refreshed after file changes. */
+export function useStorage(serverId: string) {
+  return useQuery({
+    queryKey: keys.storage(serverId),
+    queryFn: () => api<Storage>(`/servers/${serverId}/storage`),
+    staleTime: 30_000,
   })
 }
 

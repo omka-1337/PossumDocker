@@ -24,6 +24,8 @@ export function TemplateForm({ templateId, onCreated }: Props) {
 function Form({ template, onCreated }: { template: TemplateDetail; onCreated: Props['onCreated'] }) {
   const [name, setName] = useState('')
   const [values, setValues] = useState<FieldValues>(() => initialValues(template.fields))
+  // Empty: the game's default.
+  const [disk, setDisk] = useState('')
   const createServer = useCreateServer()
 
   const fieldErrors = createServer.error instanceof ApiError ? createServer.error.fieldErrors : {}
@@ -39,7 +41,12 @@ function Form({ template, onCreated }: { template: TemplateDetail; onCreated: Pr
   const submit = (e: FormEvent) => {
     e.preventDefault()
     createServer.mutate(
-      { template_id: template.id, name, values: valuesToSubmit(template.fields, values) },
+      {
+        template_id: template.id,
+        name,
+        values: valuesToSubmit(template.fields, values),
+        ...(disk.trim() !== '' && { disk_limit_mb: Number(disk) }),
+      },
       { onSuccess: onCreated },
     )
   }
@@ -72,6 +79,24 @@ function Form({ template, onCreated }: { template: TemplateDetail; onCreated: Pr
           onChange={(value) => setValue(field.id, value)}
         />
       ))}
+
+      <div>
+        <label htmlFor="server-disk" className="mb-1.5 block text-sm font-medium">
+          disk limit (MB)
+        </label>
+        <input
+          id="server-disk"
+          type="number"
+          min={0}
+          step={1024}
+          placeholder="the game's default"
+          className={inputClass}
+          value={disk}
+          onChange={(e) => setDisk(e.target.value)}
+        />
+        <p className="mt-1.5 text-xs text-muted">0 for no limit. can be raised later in settings.</p>
+        <FieldError error={fieldErrors.disk_limit_mb} />
+      </div>
 
       {template.ports.length > 0 && (
         <p className="text-xs text-muted">

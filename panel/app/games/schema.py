@@ -132,6 +132,9 @@ class ResourcesSpec(StrictModel):
     memory_mb: str | None = None
     # CPU cores the server may use, e.g. "2" or "1.5". Unset: no limit.
     cpus: str | None = None
+    # Disk space for the server's files in MB, checked by the panel (uploads, unzipping, every few
+    # minutes while it runs). Unset: no limit. Backups get twice this unless an administrator says otherwise.
+    disk_mb: str | None = None
 
 
 class RuntimeSpec(StrictModel):

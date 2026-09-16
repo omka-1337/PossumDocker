@@ -19,7 +19,7 @@ from app.games.schema import ConfigFile, Template
 from app.models import Backup, BackupStatus, Server, ServerState
 from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
 from app.runtime.files import Files
-from app.runtime.spec import ContainerSpec, build_spec
+from app.runtime.spec import ContainerSpec, build_spec, storage_limits
 
 log = logging.getLogger(__name__)
 
@@ -83,10 +83,22 @@ def crash_message(container: ContainerState) -> str:
 
 RESUME_ATTEMPTS = 12
 RESUME_DELAY = 5
+# How often running servers with a disk limit are measured.
+DISK_CHECK_SECONDS = 120
+
+MB = 1024 * 1024
+
+
+def format_size(size: int) -> str:
+    return f"{size / 1024 / MB:.1f} GB" if size >= 1024 * MB else f"{max(size, 0) / MB:.0f} MB"
 
 
 class ServerBusy(Exception):
     pass
+
+
+class StorageFull(ServerBusy):
+    """Over a disk or backup limit. A soft limit: checked before the panel writes, and every few minutes."""
 
 
 class ServerManager:
@@ -111,6 +123,9 @@ class ServerManager:
         self._install_logs: dict[str, deque[str]] = {}
         self._reaper: asyncio.Task | None = None
         self._resumer: asyncio.Task | None = None
+        self._disk_watcher: asyncio.Task | None = None
+        # Servers stopped for going over their disk limit, and why; shown until the next start.
+        self.disk_errors: dict[str, str] = {}
 
     # --- startup / shutdown --------------------------------------------------
 
@@ -129,13 +144,14 @@ class ServerManager:
             await session.commit()
 
     async def shutdown(self) -> None:
-        tasks = [*self._tasks.values(), *(t for t in (self._reaper, self._resumer) if t)]
+        tasks = [*self._tasks.values(), *(t for t in (self._reaper, self._resumer, self._disk_watcher) if t)]
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     def start_background_jobs(self) -> None:
         self._resumer = asyncio.create_task(self._resume())
+        self._disk_watcher = asyncio.create_task(self._watch_disks())
         reap = getattr(self.runtime.files, "reap_idle", None)
         if reap is None:
             return
@@ -180,6 +196,69 @@ class ServerManager:
                 except Exception:
                     log.exception("starting %s again failed", server.id)
 
+    # --- disk space ----------------------------------------------------------
+
+    def limits_of(self, server: Server) -> tuple[int | None, int | None]:
+        """Disk and backup limits in bytes; None: no limit."""
+        template = self._templates.get(server.template_id)
+        if template is None:
+            return None, None
+        disk, backups = storage_limits(template, server)
+        return (disk * MB if disk else None), (backups * MB if backups else None)
+
+    async def disk_usage(self, server: Server) -> int:
+        return await self.runtime.files.usage(server.id, [])
+
+    async def require_space(self, server: Server, adding: int) -> None:
+        """Refuse a write of `adding` bytes that would take the server over its disk limit."""
+        limit, _ = self.limits_of(server)
+        if limit is None:
+            return
+        used = await self.disk_usage(server)
+        if used + adding > limit:
+            left = format_size(limit - used)
+            raise StorageFull(
+                f"not enough space: this needs {format_size(adding)}, {left} of {format_size(limit)} is left"
+            )
+
+    async def check_disk(self, server: Server) -> str | None:
+        """Why the server is over its disk limit, or None."""
+        limit, _ = self.limits_of(server)
+        if limit is None:
+            return None
+        used = await self.disk_usage(server)
+        if used <= limit:
+            return None
+        used_text = f"{format_size(used)} of {format_size(limit)}"
+        return f"over its disk limit: {used_text} used, free up space or raise the limit"
+
+    async def _watch_disks(self) -> None:
+        while True:
+            await asyncio.sleep(DISK_CHECK_SECONDS)
+            try:
+                await self.stop_servers_over_disk_limit()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("checking disk usage failed")
+
+    async def stop_servers_over_disk_limit(self) -> None:
+        """What a game writes itself (worlds, logs, plugins) isn't checked on the way: catch it here."""
+        async with self._sessionmaker() as session:
+            servers = [s for s in await session.scalars(select(Server).where(Server.should_run))]
+        servers = [s for s in servers if self.limits_of(s)[0] is not None]
+        statuses = await self.statuses(servers)
+        for server in servers:
+            if statuses[server.id] not in (ServerStatus.RUNNING, ServerStatus.STARTING):
+                continue
+            try:
+                if problem := await self.check_disk(server):
+                    log.warning("stopping %s: %s", server.id, problem)
+                    self.disk_errors[server.id] = f"stopped: {problem}"
+                    await self.stop(server)
+            except ServerBusy:
+                pass  # a backup or another stop is running: next round
+
     # --- status --------------------------------------------------------------
 
     def status(
@@ -195,6 +274,8 @@ class ServerManager:
         status = self._live_status(server, container, docker_ok)
         if status == ServerStatus.CRASHED:
             return StatusInfo(status, crash_message(container))
+        if status == ServerStatus.STOPPED and server.id in self.disk_errors:
+            return StatusInfo(status, self.disk_errors[server.id])
         return StatusInfo(status)
 
     def _live_status(self, server: Server, container: ContainerState | None, docker_ok: bool) -> ServerStatus:
@@ -332,6 +413,10 @@ class ServerManager:
         state = await self.runtime.state(server.id)
         if state and state.status in ("running", "restarting", "paused"):
             raise ServerBusy("the server is already running")
+        if problem := await self.check_disk(server):
+            self.disk_errors[server.id] = f"can't start: {problem}"
+            raise StorageFull(f"the server is {problem}")
+        self.disk_errors.pop(server.id, None)
         await self._start(server)
 
     async def _start(self, server: Server) -> None:
@@ -441,12 +526,42 @@ class ServerManager:
         `keep`: afterwards, delete this schedule's backups beyond the newest N.
         """
         self._require_installed(server)
+        await self._require_backup_space(server, schedule_id, keep)
         async with self._sessionmaker() as session:
             backup = Backup(server_id=server.id, note=note, schedule_id=schedule_id)
             session.add(backup)
             await session.commit()
         self._spawn(server.id, self._backup(server, backup, keep))
         return backup
+
+    async def backup_usage(self, server_id: str) -> int:
+        async with self._sessionmaker() as session:
+            sizes = await session.scalars(select(Backup.size).where(Backup.server_id == server_id))
+            return sum(sizes)
+
+    async def _require_backup_space(self, server: Server, schedule_id: str | None, keep: int | None) -> None:
+        _, limit = self.limits_of(server)
+        if limit is None:
+            return
+        used = await self.backup_usage(server.id)
+        if keep:
+            # A schedule deletes its oldest backups once the new one is done: count only those it keeps.
+            async with self._sessionmaker() as session:
+                pruned = await session.scalars(
+                    select(Backup.size)
+                    .where(
+                        Backup.server_id == server.id,
+                        Backup.schedule_id == schedule_id,
+                        Backup.status == BackupStatus.READY,
+                    )
+                    .order_by(Backup.created_at.desc())
+                    .offset(keep - 1)
+                )
+                used -= sum(pruned)
+        if used >= limit:
+            raise StorageFull(
+                f"backup space is full: {format_size(used)} of {format_size(limit)} used, delete old backups"
+            )
 
     async def _backup(self, server: Server, backup: Backup, keep: int | None) -> None:
         spec = self._templates[server.template_id].backup

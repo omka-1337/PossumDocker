@@ -26,6 +26,7 @@ COPY templates/ /app/templates/
 COPY --from=web /web/dist/ /app/web/
 
 ENV POSSUM_TEMPLATES_DIR=/app/templates \
+    POSSUM_CUSTOM_TEMPLATES_DIR=/data/templates \
     POSSUM_WEB_DIR=/app/web \
     POSSUM_DATABASE_URL=sqlite+aiosqlite:////data/panel.db \
     POSSUM_BACKUPS_DIR=/data/backups \

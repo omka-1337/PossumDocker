@@ -2,6 +2,7 @@
 
 python -m app.cli ensure-admin   first start: create the administrator if there are no users yet
 python -m app.cli create-admin   add an administrator, or reset one's password
+python -m app.cli check-templates   check custom game templates without restarting the panel
 """
 
 import argparse
@@ -9,12 +10,15 @@ import asyncio
 import getpass
 import sys
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.core.config import Settings
 from app.core.db import create_engine, run_migrations
 from app.core.security import hash_password, password_error, username_error
+from app.games.providers import default_providers
+from app.games.registry import check_templates
 from app.models import User, UserSession
 
 
@@ -83,16 +87,33 @@ async def create_admin(sessionmaker, *, only_if_no_users: bool) -> None:
 
 async def main(argv: list[str]) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
-    parser.add_argument("command", choices=["ensure-admin", "create-admin"])
+    parser.add_argument("command", choices=["ensure-admin", "create-admin", "check-templates"])
     args = parser.parse_args(argv)
 
     settings = Settings()
+    if args.command == "check-templates":
+        raise SystemExit(await check_custom_templates(settings))
     await run_migrations(settings.database_url)
     engine = create_engine(settings.database_url)
     try:
         await create_admin(async_sessionmaker(engine), only_if_no_users=args.command == "ensure-admin")
     finally:
         await engine.dispose()
+
+
+async def check_custom_templates(settings: Settings) -> int:
+    directory = settings.custom_templates_dir
+    async with httpx.AsyncClient() as client:
+        results = check_templates(directory, default_providers(client, 0)) if directory.is_dir() else []
+    if not results:
+        print(f"no custom templates: put .yaml files in {directory}")
+        return 0
+    for path, problem in results:
+        print(f"  ok     {path.name}" if problem is None else f"  error  {problem}")
+    if any(problem for _, problem in results):
+        return 1
+    print("all good: restart the panel to use them")
+    return 0
 
 
 if __name__ == "__main__":

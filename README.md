@@ -35,6 +35,8 @@ The first `./possum start` downloads the panel, asks for an administrator accoun
 | `./possum start` | start the panel |
 | `./possum stop` | stop the panel; game servers keep running |
 | `./possum update` | download the latest version from GitHub and restart |
+| `./possum restart` | restart the panel, e.g. after changing your game templates |
+| `./possum check` | check your own game templates in `data/templates` |
 | `./possum logs` | follow the panel's logs |
 | `./possum admin` | add an administrator or reset a forgotten password |
 

@@ -46,7 +46,9 @@ def create_app(
 
         async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
             app.state.providers = providers or default_providers(client, settings.options_cache_ttl)
-            app.state.templates = load_templates(settings.templates_dir, app.state.providers)
+            app.state.templates = load_templates(
+                settings.templates_dir, app.state.providers, settings.custom_templates_dir
+            )
             app.state.sessionmaker = sessionmaker
             app.state.templates_dir = settings.templates_dir
             app.state.art = ArtCache(client, settings.cache_dir)

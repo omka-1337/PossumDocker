@@ -11,6 +11,8 @@ Usage: ./possum COMMAND
   start    start the panel; asks for an administrator account on the first start
   stop     stop the panel (game servers keep running)
   update   download the latest version from GitHub and restart the panel
+  restart  restart the panel, e.g. to load changed game templates
+  check    check your own game templates in data/templates
   logs     follow the panel's logs
   admin    add an administrator or reset a forgotten password
 USAGE
@@ -132,6 +134,9 @@ case $command in
     ;;
   admin)
     panel_exec python -m app.cli create-admin
+    ;;
+  check)
+    panel_exec python -m app.cli check-templates
     ;;
   -h | --help | help | "")
     usage

@@ -1,9 +1,10 @@
 """Pydantic models describing a game template (templates/*.yaml)."""
 
 import re
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 Identifier = Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]*$", max_length=64)]
 
@@ -317,6 +318,13 @@ class Template(StrictModel):
     console: ConsoleSpec = ConsoleSpec()
     backup: BackupSpec = BackupSpec()
     query: dict[str, Any] | None = None
+
+    # The folder the template was loaded from: its icon and install script paths are relative to it.
+    _directory: Path | None = PrivateAttr(default=None)
+
+    @property
+    def directory(self) -> Path | None:
+        return self._directory
 
     def config_file(self, config_id: str) -> ConfigFile | None:
         return next((c for c in self.config_files if c.id == config_id), None)

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     # sqlite+aiosqlite:///path/to/panel.db  or  postgresql+asyncpg://user:pass@host/db
     database_url: str = f"sqlite+aiosqlite:///{REPO_ROOT / 'data' / 'panel.db'}"
     templates_dir: Path = REPO_ROOT / "templates"
+    # An administrator's own game templates, added to the bundled ones (see docs/create-game-template.md).
+    custom_templates_dir: Path = REPO_ROOT / "data" / "templates"
     # Downloaded, regenerable files (game art from Steam...). Safe to delete.
     cache_dir: Path = REPO_ROOT / "data" / "cache"
     # Server backups (<server id>/<backup id>.tar.gz). Put it on another disk if you can.

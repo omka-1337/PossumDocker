@@ -196,3 +196,58 @@ def test_group_names_must_agree(tmp_path, providers):
         )
     with pytest.raises(TemplateLoadError, match="group 'mc'"):
         load_templates(tmp_path, providers)
+
+
+def write_template(directory, name, body):
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text(body)
+
+
+def test_custom_templates_are_added_and_can_replace_bundled_ones(tmp_path, providers, caplog):
+    from app.games.registry import load_templates
+
+    bundled, custom = tmp_path / "bundled", tmp_path / "custom"
+    write_template(bundled, "a.yaml", "id: a\nname: Bundled A\nruntime: {image: alpine}\n")
+    write_template(custom, "b.yaml", "id: b\nname: Custom B\nruntime: {image: alpine}\n")
+    write_template(custom, "a.yaml", "id: a\nname: My A\nruntime: {image: alpine}\n")
+    # A mistake in a custom template is logged and skipped, it doesn't stop the panel.
+    write_template(custom, "broken.yaml", "id: broken\nname: Broken\nruntime: {}\n")
+
+    templates = load_templates(bundled, providers, custom)
+    assert {t.id: t.name for t in templates.values()} == {"a": "My A", "b": "Custom B"}
+    assert "broken.yaml" in caplog.text
+
+
+def test_custom_template_files_are_relative_to_their_own_folder(tmp_path, providers):
+    from app.games.registry import icon_path, load_templates
+    from app.models import Server
+    from app.runtime.spec import build_spec
+
+    custom = tmp_path / "custom"
+    (custom / "icons").mkdir(parents=True)
+    (custom / "icons" / "g.svg").write_text("<svg/>")
+    (custom / "install").mkdir()
+    (custom / "install" / "g.sh").write_text("echo hi\n")
+    write_template(
+        custom,
+        "g.yaml",
+        "id: g\nname: G\nicon: icons/g.svg\n"
+        "install: {image: alpine, script: install/g.sh}\nruntime: {image: alpine}\n",
+    )
+    template = load_templates(tmp_path / "none", providers, custom)["g"]
+    assert icon_path(tmp_path / "none", template) == (custom / "icons" / "g.svg").resolve()
+    server = Server(id="s", name="s", template_id="g", values={}, ports={})
+    assert (
+        build_spec(template, server, tmp_path / "none").install.script
+        == (custom / "install" / "g.sh").resolve()
+    )
+
+
+def test_check_templates_reports_each_file(tmp_path, providers):
+    from app.games.registry import check_templates
+
+    write_template(tmp_path, "good.yaml", "id: good\nname: Good\nruntime: {image: alpine}\n")
+    write_template(tmp_path, "bad.yaml", "id: bad\nname: Bad\nruntime: {image: alpine}\ncolour: red\n")
+    results = {path.name: problem for path, problem in check_templates(tmp_path, providers)}
+    assert results["good.yaml"] is None
+    assert "colour" in results["bad.yaml"]

@@ -174,8 +174,9 @@ def build_spec(template: Template, server: Server, templates_dir: Path) -> Serve
     if install := template.install:
         script = None
         if install.script:
-            script = (templates_dir / install.script).resolve()
-            if not script.is_relative_to(templates_dir.resolve()) or not script.is_file():
+            base = template.directory or templates_dir
+            script = (base / install.script).resolve()
+            if not script.is_relative_to(base.resolve()) or not script.is_file():
                 raise ValueError(f"install script not found: {install.script}")
         install_spec = ContainerSpec(
             image=_render(install.image, context, strict=True),

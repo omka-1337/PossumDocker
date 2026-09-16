@@ -3,7 +3,16 @@ import { ApiError, api } from './client'
 
 // Mirrors panel/app/api/auth.py and users.py.
 
-export type Permission = 'view' | 'control' | 'console' | 'files' | 'backups' | 'restore' | 'settings' | 'schedules'
+export type Permission =
+  | 'view'
+  | 'control'
+  | 'console'
+  | 'files'
+  | 'backups'
+  | 'restore'
+  | 'settings'
+  | 'schedules'
+  | 'players'
 
 export const PERMISSIONS: { value: Permission; label: string; help: string }[] = [
   { value: 'view', label: 'view', help: 'see the server, its status and console' },
@@ -14,6 +23,7 @@ export const PERMISSIONS: { value: Permission; label: string; help: string }[] =
   { value: 'restore', label: 'restore', help: "restore a backup over the server's files" },
   { value: 'settings', label: 'settings', help: 'game settings and config files' },
   { value: 'schedules', label: 'schedules', help: 'manage schedules' },
+  { value: 'players', label: 'players', help: 'see players and their addresses, kick and ban' },
 ]
 
 export interface Me {

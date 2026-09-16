@@ -22,6 +22,7 @@ import type { Server } from '../api/types'
 import { AccessTab } from '../components/AccessTab'
 import { BackupsTab } from '../components/BackupsTab'
 import { FileBrowser } from '../components/files/FileBrowser'
+import { PlayersTab } from '../components/PlayersTab'
 import { GameIcon } from '../components/GameIcon'
 import { SchedulesTab } from '../components/SchedulesTab'
 import { SettingsTab } from '../components/SettingsTab'
@@ -90,7 +91,7 @@ function ServerView({ server }: { server: Server }) {
   )
 }
 
-type TabId = 'console' | 'files' | 'backups' | 'schedules' | 'settings' | 'access'
+type TabId = 'console' | 'players' | 'files' | 'backups' | 'schedules' | 'settings' | 'access'
 
 function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permissions: Permission[]; isAdmin: boolean }) {
   const { data: template } = useTemplate(server.template_id)
@@ -101,6 +102,7 @@ function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permi
   const tabs = (
     [
       { value: 'console', label: 'console', shown: true },
+      { value: 'players', label: 'players', shown: can('players') && Boolean(template?.players) },
       { value: 'files', label: 'files', shown: can('files') },
       { value: 'backups', label: 'backups', shown: can('backups') || can('restore') },
       { value: 'schedules', label: 'schedules', shown: can('schedules') },
@@ -122,6 +124,8 @@ function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permi
             canSend={can('console')}
           />
         </Suspense>
+      ) : tab === 'players' ? (
+        <PlayersTab server={server} />
       ) : tab === 'files' ? (
         <FileBrowser serverId={server.id} />
       ) : tab === 'backups' ? (

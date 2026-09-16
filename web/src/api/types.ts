@@ -102,6 +102,8 @@ export interface TemplateDetail extends TemplateSummary {
   fields: TemplateField[]
   ports: Port[]
   console: ConsoleSpec
+  // The game reports who plays: show the players tab
+  players: boolean
 }
 
 export type ServerStatus =

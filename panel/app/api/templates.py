@@ -43,6 +43,8 @@ class TemplateDetail(TemplateSummary):
     fields: list[TemplateField]
     ports: list[Port]
     console: ConsoleSpec
+    # The game reports who plays: the server page has a players tab.
+    players: bool
 
 
 def summary(template: Template) -> dict:
@@ -69,7 +71,13 @@ async def list_templates(templates: Templates) -> list[TemplateSummary]:
 async def get_template(template_id: str, templates: Templates) -> TemplateDetail:
     template = require_template(templates, template_id)
     fields = [f for f in template.fields if not (isinstance(f, SecretField) and f.hidden)]
-    return TemplateDetail(**summary(template), fields=fields, ports=template.ports, console=template.console)
+    return TemplateDetail(
+        **summary(template),
+        fields=fields,
+        ports=template.ports,
+        console=template.console,
+        players=bool(template.players and template.players.events),
+    )
 
 
 # An SVG opened directly is a document that could run scripts: allow none, whatever its source.

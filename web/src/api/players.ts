@@ -36,7 +36,12 @@ export interface PlayerAbilities {
   ip_bans: boolean
   bans_need_restart: boolean
   bans_by_panel: boolean
+  // Where pictures of players with an id come from
+  avatars: 'steam' | 'minecraft' | null
 }
+
+export const avatarUrl = (serverId: string, key: string) =>
+  `/api/servers/${serverId}/players/avatar?${new URLSearchParams({ key })}`
 
 export interface PlayersData {
   players: PlayerInfo[]

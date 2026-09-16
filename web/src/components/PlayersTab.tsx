@@ -1,6 +1,7 @@
 import { IconBan, IconChevronDown, IconDoorExit, IconRefresh, IconUserCircle } from '@tabler/icons-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import {
+  avatarUrl,
   usePlayerActions,
   usePlayers,
   type BanInfo,
@@ -80,7 +81,13 @@ export function PlayersTab({ server }: { server: Server }) {
 
       <Section title="online" empty={running ? 'nobody is playing right now.' : 'the server is not running.'}>
         {online.map((player) => (
-          <PlayerRow key={player.key} player={player} when={player.online_since && `joined ${formatMoment(player.online_since)}`}>
+          <PlayerRow
+            key={player.key}
+            serverId={server.id}
+            avatars={abilities.avatars}
+            player={player}
+            when={player.online_since && `joined ${formatMoment(player.online_since)}`}
+          >
             {abilities.kick && (
               <IconButton
                 onClick={() => actions.kick.mutate({ key: player.key })}
@@ -102,7 +109,13 @@ export function PlayersTab({ server }: { server: Server }) {
 
       <Section title="seen before" empty="nobody else yet.">
         {offline.map((player) => (
-          <PlayerRow key={player.key} player={player} when={`last seen ${formatAgo(player.last_seen)}`}>
+          <PlayerRow
+            key={player.key}
+            serverId={server.id}
+            avatars={abilities.avatars}
+            player={player}
+            when={`last seen ${formatAgo(player.last_seen)}`}
+          >
             {canBan && (
               <IconButton onClick={() => setBanning(player)} aria-label="ban" title="ban">
                 <IconBan size={18} />
@@ -153,10 +166,14 @@ function Section({ title, empty, children }: { title: string; empty: string; chi
 }
 
 function PlayerRow({
+  serverId,
+  avatars,
   player,
   when,
   children,
 }: {
+  serverId: string
+  avatars: PlayerAbilities['avatars']
   player: PlayerInfo
   when: string | null
   children: React.ReactNode
@@ -164,7 +181,7 @@ function PlayerRow({
   return (
     <li className="flex items-center gap-3 rounded-2xl bg-panel p-3">
       <span className="relative shrink-0 text-zinc-400">
-        <IconUserCircle size={28} stroke={1.3} />
+        <Avatar serverId={serverId} avatars={player.game_id ? avatars : null} player={player} />
         {player.online && (
           <span className="absolute right-0 bottom-0 size-2.5 rounded-full border-2 border-panel bg-emerald-400" />
         )}
@@ -178,6 +195,74 @@ function PlayerRow({
       <div className="flex shrink-0 gap-1">{children}</div>
     </li>
   )
+}
+
+const AVATAR_PX = 32
+
+/**
+ * The player's Steam avatar or Minecraft face, fetched through the panel; a plain icon until it loads
+ * or when there is none. A Minecraft skin is the whole texture: the face is its 8×8 square at (8, 8),
+ * with the hat layer at (40, 8) on top.
+ */
+function Avatar({
+  serverId,
+  avatars,
+  player,
+}: {
+  serverId: string
+  avatars: PlayerAbilities['avatars']
+  player: PlayerInfo
+}) {
+  const url = avatars ? avatarUrl(serverId, player.key) : null
+  const [loaded, setLoaded] = useState<{ url: string; hat: boolean } | null>(null)
+
+  useEffect(() => {
+    if (!url) return
+    const image = new Image()
+    image.onload = () => setLoaded({ url, hat: avatars !== 'minecraft' || hatIsDrawn(image) })
+    image.src = url
+    return () => {
+      image.onload = null
+    }
+  }, [url, avatars])
+
+  if (!url || loaded?.url !== url) return <IconUserCircle size={AVATAR_PX} stroke={1.3} />
+  if (avatars === 'steam') {
+    return <img src={url} alt="" className="size-8 rounded-full object-cover" draggable={false} />
+  }
+  const scale = AVATAR_PX / 8
+  const layer = (x: number) => `${-x * scale}px ${-8 * scale}px`
+  return (
+    <span
+      aria-hidden
+      className="block size-8 rounded-md"
+      style={{
+        backgroundImage: loaded.hat ? `url("${url}"), url("${url}")` : `url("${url}")`,
+        backgroundPosition: loaded.hat ? `${layer(40)}, ${layer(8)}` : layer(8),
+        backgroundSize: `${64 * scale}px auto`,
+        backgroundRepeat: 'no-repeat',
+        imageRendering: 'pixelated',
+      }}
+    />
+  )
+}
+
+/**
+ * Old 64×32 skins often fill the hat square with a solid colour; Minecraft draws the hat only when some
+ * of it is see-through, and so do we.
+ */
+function hatIsDrawn(image: HTMLImageElement): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = 8
+    const context = canvas.getContext('2d')
+    if (!context) return false
+    context.drawImage(image, 40, 8, 8, 8, 0, 0, 8, 8)
+    const alpha = context.getImageData(0, 0, 8, 8).data.filter((_, i) => i % 4 === 3)
+    return alpha.some((a) => a < 255) && alpha.some((a) => a > 0)
+  } catch {
+    return false
+  }
 }
 
 /** A banned player or address; a click shows why, since when and until when. */

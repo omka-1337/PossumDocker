@@ -148,6 +148,7 @@ players:
     command: list
     # "There are 2 of a max of 20 players online: Steve, Alex"
     names: '\]: There are \d+ (?:of a max of|out of maximum) \d+ players online[.:]\s*(?P<names>.*)$'
+  avatars: minecraft
   kick: ["kick {{ name }}{{ ' ' ~ reason if reason }}"]
   bans:
     by: name

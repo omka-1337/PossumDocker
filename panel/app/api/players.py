@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -9,6 +10,7 @@ from app.api.deps import Manager, Session
 from app.api.servers import get_server_or_404
 from app.core.auth import CurrentUser, allow
 from app.core.permissions import Permission
+from app.games.art import MEDIA_TYPES, ArtCache
 from app.models import Player, ServerState
 from app.runtime.manager import ServerBusy
 from app.runtime.players import PlayerError
@@ -17,6 +19,14 @@ from app.runtime.state import RUNTIME_ERRORS
 router = APIRouter(
     prefix="/servers/{server_id}/players", tags=["players"], dependencies=[allow(Permission.PLAYERS)]
 )
+
+
+# Like game art: a picture can't run scripts, whatever its source.
+AVATAR_HEADERS = {
+    "Cache-Control": "private, max-age=3600",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 class PlayerRead(BaseModel):
@@ -56,6 +66,8 @@ class Abilities(BaseModel):
     bans_need_restart: bool
     # The game has no bans: the panel kicks banned players as they join.
     bans_by_panel: bool
+    # "steam" | "minecraft": players with an id have a picture at /avatar?key=...
+    avatars: str | None
 
 
 class PlayersRead(BaseModel):
@@ -146,8 +158,29 @@ async def list_players(server_id: str, session: Session, manager: Manager) -> Pl
             ip_bans=bool(spec and spec.ip_bans),
             bans_need_restart=bool(ban and ban.file_needs_restart),
             bans_by_panel=bool(ban and ban.by_panel),
+            avatars=spec.avatars if spec else None,
         ),
     )
+
+
+@router.get("/avatar")
+async def player_avatar(
+    server_id: str, key: str, request: Request, session: Session, manager: Manager
+) -> FileResponse:
+    """The player's picture, fetched and cached by the panel: browsers never contact Steam or Mojang."""
+    server = await get_server_or_404(session, server_id)
+    spec = manager.players.spec(server)
+    player = await session.scalar(select(Player).where(Player.server_id == server_id, Player.key == key))
+    if not spec or not spec.avatars or not player or not player.game_id:
+        raise HTTPException(404, "no picture for this player")
+    art: ArtCache = request.app.state.art
+    if spec.avatars == "steam":
+        path = await art.steam_avatar(player.game_id)
+    else:
+        path = await art.minecraft_skin(player.game_id)
+    if path is None:
+        raise HTTPException(404, "no picture for this player")
+    return FileResponse(path, media_type=MEDIA_TYPES[path.suffix[1:]], headers=AVATAR_HEADERS)
 
 
 @router.post("/refresh", status_code=204)

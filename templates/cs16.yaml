@@ -125,6 +125,7 @@ players:
     answer: '^players\s*:\s*\d+\s+active'
     # "#  1 "Steve"  2 STEAM_0:1:12345   0 01:23   25    0 203.0.113.9:27005"
     row: '^#\s*\d+\s+"(?P<name>.*)"\s+(?P<slot>\d+)\s+(?P<id>\S+)\s+-?\d+\s+\S+\s+\d+\s+\d+\s+(?P<ip>[\d.]+):\d+'
+  avatars: steam
   kick: ["kick #{{ slot }}"]
   bans:
     by: id

@@ -95,6 +95,7 @@ players:
     - { type: join, pattern: 'Got connection SteamID (?P<id>\d{17})' }
     - { type: name, pattern: 'Got character ZDOID from (?P<name>.+?) : -?\d+:\d+' }
     - { type: leave, pattern: 'Closing socket (?P<id>\d{17})' }
+  avatars: steam
   # No console to kick with. Bans go in the ban list, which Valheim reads when it starts.
   bans:
     by: id

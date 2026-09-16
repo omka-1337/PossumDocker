@@ -134,6 +134,7 @@ def test_joins_and_leaves_become_players(client):
         "ip_bans": True,
         "bans_need_restart": False,
         "bans_by_panel": False,
+        "avatars": "minecraft",
     }
     feed(client, server["id"], "[12:30:00 INFO]: Steve left the game")
     [steve] = players(client, server["id"])["players"]
@@ -422,3 +423,67 @@ def test_panel_enforced_ban_expires(client, runtime):
     before = list(runtime.commands)
     feed(client, sid, "[2026-09-16 12:00:00:000 INFO] Player connected: Griefer, xuid: 2535")
     assert runtime.commands == before  # an expired ban no longer kicks
+
+
+async def test_avatars_come_from_steam_profiles_and_minecraft_skins(tmp_path):
+    import base64
+
+    import httpx
+
+    from app.games.art import ArtCache, to_steam_id64
+
+    assert to_steam_id64("STEAM_0:1:12345") == 76561197960290419
+    assert to_steam_id64("76561198000000001") == 76561198000000001
+    assert to_steam_id64("STEAM_ID_LAN") is None
+
+    textures = base64.b64encode(
+        json.dumps({"textures": {"SKIN": {"url": "http://textures.minecraft.net/texture/abc123"}}}).encode()
+    ).decode()
+    requested = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested.append(str(request.url))
+        host = request.url.host
+        if host == "steamcommunity.com":
+            avatar = "https://avatars.fastly.steamstatic.com/abc_full.jpg"
+            return httpx.Response(
+                200, text=f"<profile><avatarFull><![CDATA[{avatar}]]></avatarFull></profile>"
+            )
+        if host == "sessionserver.mojang.com":
+            return httpx.Response(200, json={"properties": [{"name": "textures", "value": textures}]})
+        if host in ("avatars.fastly.steamstatic.com", "textures.minecraft.net"):
+            media = "image/jpeg" if host.startswith("avatars") else "image/png"
+            return httpx.Response(200, content=b"picture", headers={"content-type": media})
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        art = ArtCache(http, tmp_path)
+        assert (await art.steam_avatar("STEAM_0:1:12345")).suffix == ".jpg"
+        assert (await art.minecraft_skin("069a79f4-44e9-4726-a5be-fca90e38aaf5")).suffix == ".png"
+        # Skins are fetched over https even when Mojang hands out an http link.
+        assert "https://textures.minecraft.net/texture/abc123" in requested
+        # Offline-mode UUIDs aren't Mojang's: nobody is asked.
+        count = len(requested)
+        assert await art.minecraft_skin("5627dd98-e6be-3c21-b8a8-e92344183641") is None
+        assert len(requested) == count
+
+
+def test_avatar_endpoint(client, tmp_path):
+    server = create_installed(client, "cs16")
+    sid = server["id"]
+    picture = tmp_path / "a.jpg"
+    picture.write_bytes(b"\xff\xd8jpeg")
+
+    class FakeArt:
+        async def steam_avatar(self, steam_id):
+            return picture if steam_id == "STEAM_0:1:12345" else None
+
+    client.app.state.art = FakeArt()
+    prefix = "L 09/16/2026 - 12:00:00: "
+    feed(client, sid, prefix + '"Steve<2><STEAM_0:1:12345><>" entered the game')
+    feed(client, sid, prefix + '"Lan<3><STEAM_ID_LAN><>" entered the game')
+    assert players(client, sid)["abilities"]["avatars"] == "steam"
+    resp = client.get(f"/api/servers/{sid}/players/avatar", params={"key": "id:STEAM_0:1:12345"})
+    assert resp.status_code == 200 and resp.headers["content-type"] == "image/jpeg"
+    assert "default-src 'none'" in resp.headers["content-security-policy"]
+    assert client.get(f"/api/servers/{sid}/players/avatar", params={"key": "name:Lan"}).status_code == 404

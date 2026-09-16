@@ -408,6 +408,8 @@ class PlayersSpec(StrictModel):
     kick: list[str] = []
     bans: BanSpec | None = None
     ip_bans: BanSpec | None = None
+    # Where players' pictures come from, by their id: a Steam profile or a Minecraft skin.
+    avatars: Literal["steam", "minecraft"] | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> "PlayersSpec":

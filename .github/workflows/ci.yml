@@ -28,7 +28,7 @@ jobs:
         working-directory: panel
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           # Same as the Docker image.
           python-version: "3.14"

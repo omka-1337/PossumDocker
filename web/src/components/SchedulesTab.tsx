@@ -12,6 +12,7 @@ import {
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { useMeta, useScheduleActions, useSchedules } from '../api/queries'
+import type { Permission } from '../api/auth'
 import type { Schedule, ScheduleAction, ScheduleWrite, Server } from '../api/types'
 import { DAYS, fromCron, HOUR_STEPS, toCron, type Preset } from '../lib/cron'
 import { formatDate } from '../lib/format'
@@ -26,11 +27,22 @@ const ACTIONS: { value: ScheduleAction; label: string; icon: Icon }[] = [
   { value: 'stop', label: 'stop', icon: IconPlayerStop },
 ]
 
+// A schedule acts with the panel's rights, so setting one up needs the right for the action itself.
+const ACTION_PERMISSION: Record<ScheduleAction, Permission> = {
+  backup: 'backups',
+  restart: 'control',
+  start: 'control',
+  stop: 'control',
+  command: 'console',
+}
+
 const lastStatusStyle = { ok: 'bg-emerald-400', skipped: 'bg-zinc-500', failed: 'bg-red-500' }
 
 const when = (iso: string | null) => (iso ? formatDate(Date.parse(iso) / 1000) : '—')
 
-export function SchedulesTab({ server }: { server: Server }) {
+export function SchedulesTab({ server, permissions }: { server: Server; permissions: Permission[] }) {
+  const allowed = ACTIONS.filter((a) => permissions.includes(ACTION_PERMISSION[a.value]))
+  const canManage = (action: ScheduleAction) => permissions.includes(ACTION_PERMISSION[action])
   const { data: schedules, isPending, isError, error } = useSchedules(server.id)
   const { data: meta } = useMeta()
   const actions = useScheduleActions(server.id)
@@ -51,7 +63,7 @@ export function SchedulesTab({ server }: { server: Server }) {
     <div className="pb-10">
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <p className="flex-1 text-sm text-muted">times are in the panel's time zone{meta && `: ${meta.timezone}`}</p>
-        <Button variant="primary" onClick={() => setEditing('new')}>
+        <Button variant="primary" onClick={() => setEditing('new')} disabled={allowed.length === 0}>
           <IconCalendarPlus size={16} /> new schedule
         </Button>
       </div>
@@ -88,13 +100,17 @@ export function SchedulesTab({ server }: { server: Server }) {
                     </div>
                   )}
                 </div>
-                <Switch checked={schedule.enabled} onChange={() => toggle(schedule)} />
-                <IconButton onClick={() => actions.runNow.mutate(schedule.id)} aria-label="run now" title="run now">
-                  <IconPlayerPlay size={18} />
-                </IconButton>
-                <IconButton onClick={() => setEditing(schedule)} aria-label="edit" title="edit">
-                  <IconPencil size={18} />
-                </IconButton>
+                {canManage(schedule.action) && (
+                  <>
+                    <Switch checked={schedule.enabled} onChange={() => toggle(schedule)} />
+                    <IconButton onClick={() => actions.runNow.mutate(schedule.id)} aria-label="run now" title="run now">
+                      <IconPlayerPlay size={18} />
+                    </IconButton>
+                    <IconButton onClick={() => setEditing(schedule)} aria-label="edit" title="edit">
+                      <IconPencil size={18} />
+                    </IconButton>
+                  </>
+                )}
                 <IconButton onClick={() => setDeleting(schedule)} aria-label="delete" title="delete">
                   <IconTrash size={18} />
                 </IconButton>
@@ -107,6 +123,7 @@ export function SchedulesTab({ server }: { server: Server }) {
       {editing && (
         <ScheduleEditor
           schedule={editing === 'new' ? null : editing}
+          actions={allowed}
           saving={actions.save.isPending}
           error={actions.save.error}
           onClose={() => {
@@ -166,19 +183,21 @@ function defaultPreset(kind: Preset['kind'], current: Preset): Preset {
 
 function ScheduleEditor({
   schedule,
+  actions,
   saving,
   error,
   onClose,
   onSave,
 }: {
   schedule: Schedule | null
+  actions: typeof ACTIONS
   saving: boolean
   error: Error | null
   onClose: () => void
   onSave: (body: ScheduleWrite) => void
 }) {
   const [name, setName] = useState(schedule?.name ?? 'nightly backup')
-  const [action, setAction] = useState<ScheduleAction>(schedule?.action ?? 'backup')
+  const [action, setAction] = useState<ScheduleAction>(schedule?.action ?? actions[0].value)
   const [command, setCommand] = useState(schedule?.command ?? '')
   const [keep, setKeep] = useState(schedule?.keep ?? 7)
   const [preset, setPreset] = useState<Preset>(schedule ? fromCron(schedule.cron) : { kind: 'daily', time: '04:00' })
@@ -209,7 +228,7 @@ function ScheduleEditor({
 
         <div>
           <span className="mb-1.5 block text-sm font-medium">what</span>
-          <Segmented options={ACTIONS} value={action} onChange={(v) => setAction(v as ScheduleAction)} />
+          <Segmented options={actions} value={action} onChange={(v) => setAction(v as ScheduleAction)} />
           {action === 'command' && (
             <>
               <input

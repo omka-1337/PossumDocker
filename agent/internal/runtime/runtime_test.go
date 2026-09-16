@@ -36,3 +36,24 @@ func TestListedState(t *testing.T) {
 		t.Errorf("exited: %+v", s)
 	}
 }
+
+func TestValidate(t *testing.T) {
+	good := ContainerSpec{Image: "alpine", DataPath: "/data", Mounts: []Mount{{Subpath: "server/config", Path: "/config"}}}
+	if err := good.Validate(); err != nil {
+		t.Fatalf("valid spec rejected: %v", err)
+	}
+	bad := map[string]ContainerSpec{
+		"relative data path": {Image: "alpine", DataPath: "data"},
+		"root data path":     {Image: "alpine", DataPath: "/"},
+		"bind options":       {Image: "alpine", DataPath: "/data:/host"},
+		"subpath escape":     {Image: "alpine", DataPath: "/data", Mounts: []Mount{{Subpath: "../other", Path: "/x"}}},
+		"unclean subpath":    {Image: "alpine", DataPath: "/data", Mounts: []Mount{{Subpath: "a/../../b", Path: "/x"}}},
+		"absolute subpath":   {Image: "alpine", DataPath: "/data", Mounts: []Mount{{Subpath: "/etc", Path: "/x"}}},
+		"no image":           {DataPath: "/data"},
+	}
+	for name, spec := range bad {
+		if spec.Validate() == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

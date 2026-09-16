@@ -38,6 +38,10 @@ The first `make start` builds the panel, asks for an administrator account and p
 
 Everything the panel keeps (database, backups) is in `data/`. Game servers live in Docker volumes named `possum-<id>-data`.
 
+Behind a reverse proxy (nginx, Caddy), add its address to `.env`, e.g. `POSSUM_TRUSTED_PROXIES=172.17.0.1`:
+the panel then trusts its `X-Forwarded-For`/`X-Forwarded-Proto` headers, so login throttling sees visitors' real
+addresses and the session cookie is marked secure on HTTPS.
+
 ## Development
 
 ### Panel

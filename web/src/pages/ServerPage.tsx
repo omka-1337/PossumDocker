@@ -127,7 +127,7 @@ function InstalledTabs({ server, permissions, isAdmin }: { server: Server; permi
       ) : tab === 'backups' ? (
         <BackupsTab server={server} canBackup={can('backups')} canRestore={can('restore')} />
       ) : tab === 'schedules' ? (
-        <SchedulesTab server={server} />
+        <SchedulesTab server={server} permissions={permissions} />
       ) : tab === 'access' ? (
         <AccessTab serverId={server.id} />
       ) : (

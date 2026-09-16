@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.api.deps import Providers, Templates, require_template
 from app.games.art import MEDIA_TYPES, ArtCache
-from app.games.providers import ProviderError
+from app.games.providers import InvalidParams, ProviderError
 from app.games.registry import icon_path
 from app.games.schema import (
     ConsoleSpec,
@@ -120,5 +120,7 @@ async def get_field_options(
     params = dependency_params(field, dict(request.query_params))
     try:
         return await providers.get(field.options_from, params)
+    except InvalidParams as exc:
+        raise HTTPException(422, str(exc)) from exc
     except ProviderError as exc:
         raise HTTPException(502, str(exc)) from exc

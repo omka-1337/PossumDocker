@@ -55,7 +55,7 @@ async def login(body: LoginBody, request: Request, response: Response, session: 
     if user.disabled:
         raise HTTPException(403, "this account is disabled")
 
-    throttle.succeeded(body.username)
+    throttle.succeeded(address, body.username)
     if needs_rehash(user.password_hash):
         user.password_hash = hash_password(body.password)
     token = await create_session(session, user)

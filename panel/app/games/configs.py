@@ -214,10 +214,23 @@ class ConfigValuesError(Exception):
         self.errors = errors
 
 
-def validate_config_values(config: ConfigFile, values: dict[str, str]) -> dict[str, str]:
+# Setting names in every format we edit: "sv_password", "rcon.port", "level-seed", "visibility.public".
+# Anything else (a line break above all) could smuggle extra lines into the file, and server.cfg
+# lines are console commands.
+SETTING_NAME = re.compile(r"[A-Za-z0-9_.-]{1,128}")
+
+
+def validate_config_values(
+    config: ConfigFile, values: dict[str, str], existing: set[str] | None = None
+) -> dict[str, str]:
+    """`existing`: keys already in the file. New keys may only be ones the template describes."""
     errors: dict[str, str] = {}
     for key, value in values.items():
-        if key in config.managed:
+        if not SETTING_NAME.fullmatch(key):
+            errors[key] = "not a valid setting name"
+        elif existing is not None and key not in existing and key not in config.hints:
+            errors[key] = "not a setting in this file"
+        elif key in config.managed:
             errors[key] = "managed by the panel"
         elif not isinstance(value, str):
             errors[key] = "must be a string"

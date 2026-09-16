@@ -14,7 +14,7 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.games.configs import ConfigDocument
+from app.games.configs import ConfigDocument, validate_config_values
 from app.games.schema import ConfigFile, Template
 from app.models import Backup, BackupStatus, Server, ServerState
 from app.runtime.docker import ContainerState, LogFn, RuntimeUnavailable
@@ -407,6 +407,8 @@ class ServerManager:
         self, server: Server, config: ConfigFile, values: dict[str, str]
     ) -> ConfigDocument:
         document = await self.read_config(server, config) or ConfigDocument(config.format, b"")
+        # Again with the file at hand: only keys it has, or ones the template knows about.
+        validate_config_values(config, values, existing=set(document.items()))
         for key, value in values.items():
             document.set(key, value)
         await self.runtime.write_file(server.id, self._config_path(server, config), document.render())

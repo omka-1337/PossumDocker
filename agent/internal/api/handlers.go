@@ -74,7 +74,7 @@ func (s *Server) install(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var spec runtime.ContainerSpec
-	if !decode(w, r, &spec) {
+	if !decode(w, r, &spec) || !validSpec(w, spec) {
 		return
 	}
 	out := newNDJSON(w)
@@ -87,7 +87,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var spec runtime.ContainerSpec
-	if !decode(w, r, &spec) {
+	if !decode(w, r, &spec) || !validSpec(w, spec) {
 		return
 	}
 	if err := s.runtime.Create(r.Context(), id, spec); err != nil {
@@ -95,6 +95,16 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// validSpec answers 400 for a spec that isn't well formed. The panel only sends specs rendered from
+// templates; this is for the day it's compromised: no mount outside the server's own volume.
+func validSpec(w http.ResponseWriter, spec runtime.ContainerSpec) bool {
+	if err := spec.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return false
+	}
+	return true
 }
 
 func (s *Server) start(w http.ResponseWriter, r *http.Request) {

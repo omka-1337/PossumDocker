@@ -1,8 +1,11 @@
 """Options providers: code that fetches select options at runtime (e.g. game versions)."""
 
+import re
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -15,12 +18,22 @@ class ProviderError(Exception):
     pass
 
 
+class InvalidParams(ValueError):
+    """A dependency value no provider could mean: it would only end up in an outside URL or the cache."""
+
+
+# Versions, loader names: "1.21.1", "26.1.0.19-beta", "fabric". Also empty, for a field not chosen yet.
+PARAM_VALUE = re.compile(r"[\w.+-]{0,64}")
+CACHE_ENTRIES = 256
+
+
 class OptionsProviders:
     def __init__(self, client: httpx.AsyncClient, ttl: int = 3600):
         self._client = client
         self._ttl = ttl
         self._providers: dict[str, ProviderFn] = {}
-        self._cache: dict[tuple, tuple[float, list[Option]]] = {}
+        # Keyed by what logged-in users send: bounded, oldest out first.
+        self._cache: OrderedDict[tuple, tuple[float, list[Option]]] = OrderedDict()
 
     def register(self, name: str, fn: ProviderFn) -> None:
         self._providers[name] = fn
@@ -31,6 +44,9 @@ class OptionsProviders:
     async def get(self, name: str, params: dict[str, Any]) -> list[Option]:
         if name not in self._providers:
             raise ProviderError(f"unknown options provider '{name}'")
+        for key, value in params.items():
+            if value is not None and not (isinstance(value, str) and PARAM_VALUE.fullmatch(value)):
+                raise InvalidParams(f"invalid value for '{key}'")
 
         key = (name, tuple(sorted(params.items())))
         cached = self._cache.get(key)
@@ -43,6 +59,9 @@ class OptionsProviders:
             raise ProviderError(f"provider '{name}' failed: {exc}") from exc
 
         self._cache[key] = (time.monotonic(), options)
+        self._cache.move_to_end(key)
+        while len(self._cache) > CACHE_ENTRIES:
+            self._cache.popitem(last=False)
         return options
 
 
@@ -111,7 +130,7 @@ async def minecraft_loader_versions(client: httpx.AsyncClient, params: dict[str,
 
     if loader == "fabric":
         options = []
-        for entry in await _get_json(client, f"{FABRIC_META}/versions/loader/{version}"):
+        for entry in await _get_json(client, f"{FABRIC_META}/versions/loader/{quote(version, safe='')}"):
             build = entry["loader"]
             label = build["version"] if build.get("stable") else f"{build['version']} (unstable)"
             options.append(Option(value=build["version"], label=label))

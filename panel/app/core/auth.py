@@ -39,7 +39,9 @@ def dummy_hash() -> str:
 
 
 def is_https(request: Request) -> bool:
-    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    # Behind a reverse proxy uvicorn takes the scheme from X-Forwarded-Proto, but only from proxies
+    # listed in FORWARDED_ALLOW_IPS: anyone else could claim anything.
+    return request.url.scheme == "https"
 
 
 def set_session_cookie(response: Response, request: Request, token: str) -> None:
@@ -143,7 +145,10 @@ async def visible_server_ids(session: AsyncSession, user: User) -> set[str] | No
 
 
 class LoginThrottle:
-    """Slows down password guessing: a few failures per address and per name, then a pause."""
+    """Slows down password guessing: a few failures per address, and per name from that address.
+
+    Not per name alone: then anyone could lock the administrator out by getting their password wrong.
+    """
 
     WINDOW = 600  # seconds
     PER_ADDRESS = 20
@@ -161,13 +166,20 @@ class LoginThrottle:
     def blocked(self, address: str, username: str) -> bool:
         return (
             len(self._recent(f"ip:{address}")) >= self.PER_ADDRESS
-            or len(self._recent(f"user:{username.lower()}")) >= self.PER_USERNAME
+            or len(self._recent(self._user_key(address, username))) >= self.PER_USERNAME
         )
 
     def failed(self, address: str, username: str) -> None:
         now = time.monotonic()
         self._recent(f"ip:{address}").append(now)
-        self._recent(f"user:{username.lower()}").append(now)
+        self._recent(self._user_key(address, username)).append(now)
+        # Forget keys with nothing recent, so random names don't pile up in memory.
+        for key in [k for k, entries in self._failures.items() if not self._recent(k)]:
+            del self._failures[key]
 
-    def succeeded(self, username: str) -> None:
-        self._failures.pop(f"user:{username.lower()}", None)
+    def succeeded(self, address: str, username: str) -> None:
+        self._failures.pop(self._user_key(address, username), None)
+
+    @staticmethod
+    def _user_key(address: str, username: str) -> str:
+        return f"user:{address}:{username.strip().lower()}"

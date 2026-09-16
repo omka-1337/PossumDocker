@@ -4,7 +4,7 @@ import re
 import secrets
 from typing import Any
 
-from app.games.providers import OptionsProviders, ProviderError
+from app.games.providers import InvalidParams, OptionsProviders, ProviderError
 from app.games.schema import (
     BooleanField,
     NumberField,
@@ -117,6 +117,8 @@ async def _check(
             if field.options_from:
                 try:
                     options = await providers.get(field.options_from, dependency_params(field, clean))
+                except InvalidParams:
+                    return "not one of the available options"
                 except ProviderError:
                     return "could not load the list of options, try again later"
             else:

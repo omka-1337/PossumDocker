@@ -15,6 +15,8 @@ services:
       POSSUM_AGENT_URL: http://agent:8081
       POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run make start}"
       POSSUM_TIMEZONE: "${POSSUM_TIMEZONE:-}"
+      # Behind a reverse proxy: its address, so the panel sees visitors' real IPs and HTTPS.
+      FORWARDED_ALLOW_IPS: "${POSSUM_TRUSTED_PROXIES:-127.0.0.1}"
     volumes:
       - "${POSSUM_DATA_DIR:-./data}:/data"
     networks: [web, agent]

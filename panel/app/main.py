@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -67,10 +67,27 @@ def create_app(
         await engine.dispose()
 
     app = FastAPI(title="PossumDocker Panel", lifespan=lifespan)
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
     app.include_router(router)
     if (settings.web_dir / "index.html").is_file():
         serve_web(app, settings.web_dir)
     return app
+
+
+SECURITY_HEADERS = {
+    # No other site may show the panel in a frame and trick someone into clicking its buttons.
+    "Content-Security-Policy": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'",
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+}
 
 
 def serve_web(app: FastAPI, web_dir: Path) -> None:

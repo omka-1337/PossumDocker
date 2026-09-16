@@ -113,5 +113,5 @@ async def update_config(
         raise HTTPException(422, {"errors": exc.errors}) from exc
     try:
         return to_read(config, await manager.write_config(server, config, values))
-    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError) as exc:
+    except (ServerBusy, RuntimeUnavailable, DockerError, ValueError, ConfigValuesError) as exc:
         raise _docker_errors(exc) from exc

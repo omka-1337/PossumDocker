@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import Session
 from app.api.servers import get_server_or_404
-from app.core.auth import allow
+from app.core.auth import CurrentUser, allow, server_permissions
 from app.core.permissions import Permission
 from app.games.schema import Template
 from app.models import Schedule, ScheduleAction
@@ -53,6 +53,27 @@ class ScheduleRead(BaseModel):
     last_run_at: datetime | None
     last_status: str | None
     last_message: str | None
+
+
+# A schedule does its action with the panel's rights, so whoever sets one up needs the right for the action
+# itself: otherwise "schedules" alone would let someone type console commands or stop the server.
+ACTION_PERMISSION = {
+    ScheduleAction.BACKUP: Permission.BACKUPS,
+    ScheduleAction.RESTART: Permission.CONTROL,
+    ScheduleAction.START: Permission.CONTROL,
+    ScheduleAction.STOP: Permission.CONTROL,
+    ScheduleAction.COMMAND: Permission.CONSOLE,
+}
+
+
+async def require_action_permission(
+    session: Session, user: CurrentUser, server_id: str, *actions: ScheduleAction
+) -> None:
+    granted = await server_permissions(session, user, server_id)
+    for action in actions:
+        needed = ACTION_PERMISSION[action]
+        if needed.value not in granted:
+            raise HTTPException(403, f"a '{action.value}' schedule needs the '{needed.value}' permission")
 
 
 def get_scheduler(request: Request) -> Scheduler:
@@ -102,9 +123,10 @@ async def list_schedules(server_id: str, session: Session, request: Request) -> 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_schedule(
-    server_id: str, body: ScheduleWrite, session: Session, request: Request
+    server_id: str, body: ScheduleWrite, session: Session, request: Request, user: CurrentUser
 ) -> ScheduleRead:
     server = await get_server_or_404(session, server_id)
+    await require_action_permission(session, user, server_id, body.action)
     schedule = Schedule(server_id=server_id)
     apply(schedule, body, get_scheduler(request), request.app.state.templates.get(server.template_id))
     session.add(schedule)
@@ -114,9 +136,16 @@ async def create_schedule(
 
 @router.put("/{schedule_id}")
 async def update_schedule(
-    server_id: str, schedule_id: str, body: ScheduleWrite, session: Session, request: Request
+    server_id: str,
+    schedule_id: str,
+    body: ScheduleWrite,
+    session: Session,
+    request: Request,
+    user: CurrentUser,
 ) -> ScheduleRead:
     schedule = await get_schedule_or_404(session, server_id, schedule_id)
+    # Both: no turning someone else's backup schedule into a command, and no rewriting their command.
+    await require_action_permission(session, user, server_id, schedule.action, body.action)
     server = await get_server_or_404(session, server_id)
     apply(schedule, body, get_scheduler(request), request.app.state.templates.get(server.template_id))
     await session.commit()
@@ -132,11 +161,12 @@ async def delete_schedule(server_id: str, schedule_id: str, session: Session) ->
 
 @router.post("/{schedule_id}/run")
 async def run_schedule_now(
-    server_id: str, schedule_id: str, session: Session, request: Request
+    server_id: str, schedule_id: str, session: Session, request: Request, user: CurrentUser
 ) -> ScheduleRead:
     """Run it once right away. The regular timetable is unchanged."""
     scheduler = get_scheduler(request)
     schedule = await get_schedule_or_404(session, server_id, schedule_id)
+    await require_action_permission(session, user, server_id, schedule.action)
     server = await get_server_or_404(session, server_id)
     result, message = await scheduler.execute(schedule, server)
     schedule.last_run_at, schedule.last_status, schedule.last_message = datetime.now(UTC), result, message

@@ -9,7 +9,7 @@ EXEC = $(COMPOSE) exec $$([ -t 0 ] || echo -T) panel
 help: ## Show the commands
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F ':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-start: .env token ## Build and start the panel; asks for an administrator account on the first start
+start: .env token private ## Build and start the panel; asks for an administrator account on the first start
 	$(COMPOSE) up -d --build --remove-orphans
 	@$(MAKE) --no-print-directory wait
 	@$(EXEC) python -m app.cli ensure-admin
@@ -20,7 +20,7 @@ stop: ## Stop the panel (game servers keep running)
 
 update: ## Pull the latest version from GitHub and restart the panel
 	@git pull --ff-only || { echo "Can't update: this copy has local changes or has diverged from GitHub."; exit 1; }
-	@$(MAKE) --no-print-directory token
+	@$(MAKE) --no-print-directory token private
 	$(COMPOSE) up -d --build --remove-orphans
 	@$(MAKE) --no-print-directory wait
 
@@ -49,6 +49,13 @@ token: .env
 		echo "POSSUM_AGENT_TOKEN=$$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >> .env; \
 		echo "Added an agent token to .env"; \
 	}
+
+# The agent token and the database (password hashes) are for this user only, not everyone on the machine.
+.PHONY: private
+private: .env
+	@mkdir -p data
+	@chmod 600 .env
+	@chmod 700 data
 
 .PHONY: wait
 wait:

@@ -69,6 +69,34 @@ type ContainerSpec struct {
 	Script []byte `json:"script"`
 }
 
+// Validate checks the paths: absolute, clean container paths, and volume subpaths that stay inside it.
+// A ":" or "," would let a path smuggle extra options into Docker's mount syntax.
+func (spec ContainerSpec) Validate() error {
+	if spec.Image == "" {
+		return errors.New("image is required")
+	}
+	if !cleanAbsolute(spec.DataPath) {
+		return fmt.Errorf("invalid data_path %q", spec.DataPath)
+	}
+	for _, m := range spec.Mounts {
+		if !cleanAbsolute(m.Path) {
+			return fmt.Errorf("invalid mount path %q", m.Path)
+		}
+		if m.Subpath == "" || path.IsAbs(m.Subpath) || path.Clean(m.Subpath) != m.Subpath ||
+			m.Subpath == ".." || strings.HasPrefix(m.Subpath, "../") || strings.ContainsAny(m.Subpath, ":,") {
+			return fmt.Errorf("invalid mount subpath %q", m.Subpath)
+		}
+	}
+	if spec.MemoryMB < 0 || spec.CPUs < 0 {
+		return errors.New("limits can't be negative")
+	}
+	return nil
+}
+
+func cleanAbsolute(p string) bool {
+	return path.IsAbs(p) && path.Clean(p) == p && p != "/" && !strings.ContainsAny(p, ":,")
+}
+
 // State is a container's state as the panel sees it.
 type State struct {
 	Status string `json:"status"`           // "running", "exited", "created", ...

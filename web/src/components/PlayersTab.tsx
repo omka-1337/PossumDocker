@@ -59,6 +59,9 @@ export function PlayersTab({ server }: { server: Server }) {
           : ban.value === (abilities.ban_by === 'id' ? player.game_id : player.name),
     )
 
+  // Banned players are listed under "banned", not among the others.
+  const offlineNotBanned = offline.filter((player) => bansOf(player).length === 0)
+
   const unbanPlayer = async (player: PlayerInfo) => {
     let effective: Effective = 'now'
     for (const ban of bansOf(player)) {
@@ -140,7 +143,7 @@ export function PlayersTab({ server }: { server: Server }) {
       </Section>
 
       <Section title="offline" empty="nobody else yet.">
-        {offline.map((player) => (
+        {offlineNotBanned.map((player) => (
           <PlayerRow
             key={player.key}
             serverId={server.id}
@@ -325,32 +328,34 @@ function BanRow({ ban, onUnban, unbanning }: { ban: BanInfo; onUnban: () => void
           </span>
           <IconChevronDown size={18} className={`shrink-0 text-muted transition ${open ? 'rotate-180' : ''}`} />
         </button>
-        <Button onClick={onUnban} disabled={unbanning}>
-          unban
-        </Button>
       </div>
       {open && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-line-soft px-4 py-3 text-sm">
-          {ban.name && (
-            <>
-              <dt className="text-muted">{ban.kind === 'ip' ? 'address' : 'id'}</dt>
-              <dd className="break-all">{ban.value}</dd>
-            </>
-          )}
-          <dt className="text-muted">reason</dt>
-          <dd className={ban.reason ? '' : 'text-muted'}>{ban.reason ?? 'not given'}</dd>
-          <dt className="text-muted">banned</dt>
-          <dd className={ban.banned_at ? '' : 'text-muted'}>
-            {ban.banned_at ? formatDate(Date.parse(ban.banned_at) / 1000) : 'unknown: not through the panel'}
-            {ban.banned_by && ` by ${ban.banned_by}`}
-          </dd>
-          <dt className="text-muted">until</dt>
-          <dd>
-            {ban.expires_at
-              ? `${formatDate(Date.parse(ban.expires_at) / 1000)} (${formatAgo(ban.expires_at)})`
-              : 'never: permanent'}
-          </dd>
-        </dl>
+        <div className="border-t border-line-soft px-4 py-3">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+            {ban.name && (
+              <>
+                <dt className="text-muted">{ban.kind === 'ip' ? 'address' : 'id'}</dt>
+                <dd className="break-all">{ban.value}</dd>
+              </>
+            )}
+            <dt className="text-muted">reason</dt>
+            <dd className={ban.reason ? '' : 'text-muted'}>{ban.reason ?? 'not given'}</dd>
+            <dt className="text-muted">banned</dt>
+            <dd className={ban.banned_at ? '' : 'text-muted'}>
+              {ban.banned_at ? formatDate(Date.parse(ban.banned_at) / 1000) : 'unknown: not through the panel'}
+              {ban.banned_by && ` by ${ban.banned_by}`}
+            </dd>
+            <dt className="text-muted">until</dt>
+            <dd>
+              {ban.expires_at
+                ? `${formatDate(Date.parse(ban.expires_at) / 1000)} (${formatAgo(ban.expires_at)})`
+                : 'never: permanent'}
+            </dd>
+          </dl>
+          <Button className="mt-3" onClick={onUnban} disabled={unbanning}>
+            <IconLockOpen size={16} /> unban
+          </Button>
+        </div>
       )}
     </li>
   )

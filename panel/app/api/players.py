@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.api.deps import Manager, Session
 from app.api.servers import get_server_or_404
-from app.core.auth import allow
+from app.core.auth import CurrentUser, allow
 from app.core.permissions import Permission
 from app.models import Player, ServerState
 from app.runtime.manager import ServerBusy
@@ -36,6 +36,11 @@ class BanRead(BaseModel):
     value: str
     name: str | None
     reason: str | None
+    # From the panel's record of the ban, or the game's list when it keeps them (Minecraft).
+    banned_at: datetime | None
+    # None: permanent (or unknown for bans made outside the panel).
+    expires_at: datetime | None
+    banned_by: str | None
 
 
 class Abilities(BaseModel):
@@ -72,6 +77,8 @@ class BanBody(BaseModel):
     key: str | None = Field(default=None, max_length=200)
     value: str | None = Field(default=None, max_length=200)
     reason: str | None = Field(default=None, max_length=200)
+    # A temporary ban: lifted after this many minutes (up to 10 years). None: permanent.
+    minutes: int | None = Field(default=None, ge=1, le=60 * 24 * 3653)
 
 
 class UnbanBody(BaseModel):
@@ -118,7 +125,18 @@ async def list_players(server_id: str, session: Session, manager: Manager) -> Pl
     ban = spec.bans if spec else None
     return PlayersRead(
         players=[PlayerRead.model_validate(p, from_attributes=True) for p in players],
-        bans=[BanRead(kind=b.kind, value=b.value, name=b.name, reason=b.reason) for b in bans],
+        bans=[
+            BanRead(
+                kind=b.kind,
+                value=b.value,
+                name=b.name,
+                reason=b.reason,
+                banned_at=b.banned_at,
+                expires_at=b.expires_at,
+                banned_by=b.banned_by,
+            )
+            for b in bans
+        ],
         bans_error=bans_error,
         abilities=Abilities(
             tracked=bool(spec and spec.events),
@@ -151,13 +169,21 @@ async def kick_player(server_id: str, body: KickBody, session: Session, manager:
 
 
 @router.post("/ban")
-async def ban_player(server_id: str, body: BanBody, session: Session, manager: Manager) -> ActionResult:
+async def ban_player(
+    server_id: str, body: BanBody, session: Session, manager: Manager, user: CurrentUser
+) -> ActionResult:
     server = await _installed(session, server_id)
     if not body.key and not body.value:
         raise HTTPException(422, "ban a known player (key) or give a value")
     try:
         effective = await manager.players.ban(
-            server, body.kind, key=body.key, value=body.value, reason=body.reason
+            server,
+            body.kind,
+            key=body.key,
+            value=body.value,
+            reason=body.reason,
+            minutes=body.minutes,
+            banned_by=user.username,
         )
     except (PlayerError, ServerBusy, ValueError, *RUNTIME_ERRORS) as exc:
         raise _errors(exc) from exc

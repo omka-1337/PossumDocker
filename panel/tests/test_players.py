@@ -168,9 +168,13 @@ def test_minecraft_bans_use_commands_while_running_and_the_file_when_stopped(cli
         "again",
         "forever",
     )
-    assert players(client, sid)["bans"] == [
-        {"kind": "player", "value": "Steve", "name": None, "reason": "again"}
-    ]
+    [ban] = players(client, sid)["bans"]
+    assert (ban["value"], ban["reason"], ban["banned_by"], ban["expires_at"]) == (
+        "Steve",
+        "again",
+        "admin",
+        None,
+    )
 
     # Someone who never joined has no UUID yet: only the running game can look them up.
     resp = client.post(f"{url}/ban", json={"kind": "player", "value": "Stranger"})
@@ -211,7 +215,7 @@ def test_counter_strike_bans_by_steam_id(client, runtime):
     assert runtime.config_files[(sid, "/data/cstrike/listip.cfg")] == b"addip 0.000000 198.51.100.7\n"
     runtime.config_files[(sid, "/data/cstrike/banned.cfg")] = b"banid 0.000000 STEAM_0:1:12345\n"
     bans = players(client, sid)["bans"]
-    assert {"kind": "player", "value": "STEAM_0:1:12345", "name": "Steve", "reason": None} in bans
+    assert ("player", "STEAM_0:1:12345", "Steve") in [(b["kind"], b["value"], b["name"]) for b in bans]
 
 
 def test_valheim_bans_wait_for_a_restart(client, runtime):
@@ -339,3 +343,82 @@ def test_template_players_section_is_checked():
         Template.model_validate({**base, "players": {"bans": {"by_panel": True}}})
     with pytest.raises(ValueError, match="pattern"):
         Template.model_validate({**base, "players": {"events": [{"type": "join", "pattern": "("}]}})
+
+
+def test_ban_details_and_temporary_bans(client, runtime):
+    from datetime import UTC, datetime, timedelta
+
+    server = create_installed(client, "cs16")
+    sid = server["id"]
+    url = f"/api/servers/{sid}/players"
+    client.post(f"/api/servers/{sid}/start")
+    resp = client.post(
+        f"{url}/ban", json={"kind": "player", "value": "STEAM_0:1:12345", "reason": "wallhack", "minutes": 60}
+    )
+    assert resp.status_code == 200, resp.text
+    # CS 1.6 keeps only the SteamID; the rest comes from the panel.
+    runtime.config_files[(sid, "/data/cstrike/banned.cfg")] = b"banid 0.000000 STEAM_0:1:12345\n"
+    [ban] = players(client, sid)["bans"]
+    assert (ban["reason"], ban["banned_by"]) == ("wallhack", "admin")
+    expires = datetime.fromisoformat(ban["expires_at"])
+    assert timedelta(minutes=59) < expires - datetime.now(UTC) <= timedelta(minutes=60)
+
+    # Time's up: the panel lifts it with the game's own command.
+    manager = client.app.state.manager
+
+    async def expire():
+        from sqlalchemy import update
+
+        from app.models import BanRecord
+
+        async with manager._sessionmaker() as session:
+            await session.execute(
+                update(BanRecord).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+            )
+            await session.commit()
+        await manager.players.lift_expired()
+
+    client.portal.call(expire)
+    assert runtime.commands[-2:] == [(sid, "removeid STEAM_0:1:12345"), (sid, "writeid")]
+    runtime.config_files[(sid, "/data/cstrike/banned.cfg")] = b""
+    assert players(client, sid)["bans"] == []
+
+
+def test_minecraft_temporary_ban_written_with_its_end(client, runtime):
+    server = minecraft(client)
+    sid = server["id"]
+    feed(client, sid, *MC_JOIN)
+    resp = client.post(
+        f"/api/servers/{sid}/players/ban", json={"kind": "player", "key": "name:Steve", "minutes": 1440}
+    )
+    assert resp.json() == {"effective": "now"}
+    [entry] = json.loads(runtime.config_files[(sid, "/data/banned-players.json")])
+    assert entry["expires"] != "forever" and entry["expires"].endswith("+0000")
+    [ban] = players(client, sid)["bans"]
+    assert ban["expires_at"] is not None
+
+
+def test_panel_enforced_ban_expires(client, runtime):
+    from datetime import UTC, datetime, timedelta
+
+    server = create_installed(client, "minecraft-bedrock", eula=True)
+    sid = server["id"]
+    client.post(f"/api/servers/{sid}/start")
+    client.post(f"/api/servers/{sid}/players/ban", json={"kind": "player", "value": "Griefer", "minutes": 5})
+    manager = client.app.state.manager
+
+    async def expire():
+        from sqlalchemy import update
+
+        from app.models import BanRecord
+
+        async with manager._sessionmaker() as session:
+            await session.execute(
+                update(BanRecord).values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+            )
+            await session.commit()
+
+    client.portal.call(expire)
+    before = list(runtime.commands)
+    feed(client, sid, "[2026-09-16 12:00:00:000 INFO] Player connected: Griefer, xuid: 2535")
+    assert runtime.commands == before  # an expired ban no longer kicks

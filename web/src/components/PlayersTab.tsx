@@ -1,4 +1,4 @@
-import { IconBan, IconDoorExit, IconRefresh, IconUserCircle } from '@tabler/icons-react'
+import { IconBan, IconChevronDown, IconDoorExit, IconRefresh, IconUserCircle } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import {
   usePlayerActions,
@@ -10,7 +10,7 @@ import {
   type PlayerInfo,
 } from '../api/players'
 import type { Server } from '../api/types'
-import { formatAgo, formatDate } from '../lib/format'
+import { formatAgo, formatDate, formatMoment } from '../lib/format'
 import { FieldError, inputClass } from './FieldInput'
 import { Button, IconButton, Modal, Segmented } from './ui'
 
@@ -80,7 +80,7 @@ export function PlayersTab({ server }: { server: Server }) {
 
       <Section title="online" empty={running ? 'nobody is playing right now.' : 'the server is not running.'}>
         {online.map((player) => (
-          <PlayerRow key={player.key} player={player} when={player.online_since && `online ${formatAgo(player.online_since)}`}>
+          <PlayerRow key={player.key} player={player} when={player.online_since && `joined ${formatMoment(player.online_since)}`}>
             {abilities.kick && (
               <IconButton
                 onClick={() => actions.kick.mutate({ key: player.key })}
@@ -115,22 +115,12 @@ export function PlayersTab({ server }: { server: Server }) {
       {canBan && (
         <Section title="banned" empty={bansError ? `couldn't read the ban list: ${bansError}` : 'nobody is banned.'}>
           {bans.map((ban) => (
-            <li key={`${ban.kind}:${ban.value}`} className="flex items-center gap-3 rounded-2xl bg-panel p-3">
-              <IconBan size={20} stroke={1.5} className="shrink-0 text-red-400" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {ban.name ?? ban.value.replace(/^\w+:/, '')}
-                  {ban.kind === 'ip' && <span className="ml-2 text-xs font-normal text-muted">address</span>}
-                </div>
-                <div className="truncate text-xs text-muted">
-                  {ban.name ? ban.value : null}
-                  {ban.reason && `${ban.name ? ' · ' : ''}${ban.reason}`}
-                </div>
-              </div>
-              <Button onClick={() => unban(ban)} disabled={actions.unban.isPending}>
-                unban
-              </Button>
-            </li>
+            <BanRow
+              key={`${ban.kind}:${ban.value}`}
+              ban={ban}
+              onUnban={() => unban(ban)}
+              unbanning={actions.unban.isPending}
+            />
           ))}
         </Section>
       )}
@@ -190,6 +180,73 @@ function PlayerRow({
   )
 }
 
+/** A banned player or address; a click shows why, since when and until when. */
+function BanRow({ ban, onUnban, unbanning }: { ban: BanInfo; onUnban: () => void; unbanning: boolean }) {
+  const [open, setOpen] = useState(false)
+  const title = ban.name ?? ban.value.replace(/^\w+:/, '')
+  return (
+    <li className="rounded-2xl bg-panel">
+      <div className="flex items-center gap-3 p-3">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <IconBan size={20} stroke={1.5} className="shrink-0 text-red-400" />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium">
+              {title}
+              {ban.kind === 'ip' && <span className="ml-2 text-xs font-normal text-muted">address</span>}
+            </span>
+            <span className="block truncate text-xs text-muted">
+              {ban.expires_at ? `until ${formatMoment(ban.expires_at)}` : 'permanent'}
+              {ban.reason && ` · ${ban.reason}`}
+            </span>
+          </span>
+          <IconChevronDown size={18} className={`shrink-0 text-muted transition ${open ? 'rotate-180' : ''}`} />
+        </button>
+        <Button onClick={onUnban} disabled={unbanning}>
+          unban
+        </Button>
+      </div>
+      {open && (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-line-soft px-4 py-3 text-sm">
+          {ban.name && (
+            <>
+              <dt className="text-muted">{ban.kind === 'ip' ? 'address' : 'id'}</dt>
+              <dd className="break-all">{ban.value}</dd>
+            </>
+          )}
+          <dt className="text-muted">reason</dt>
+          <dd className={ban.reason ? '' : 'text-muted'}>{ban.reason ?? 'not given'}</dd>
+          <dt className="text-muted">banned</dt>
+          <dd className={ban.banned_at ? '' : 'text-muted'}>
+            {ban.banned_at ? formatDate(Date.parse(ban.banned_at) / 1000) : 'unknown: not through the panel'}
+            {ban.banned_by && ` by ${ban.banned_by}`}
+          </dd>
+          <dt className="text-muted">until</dt>
+          <dd>
+            {ban.expires_at
+              ? `${formatDate(Date.parse(ban.expires_at) / 1000)} (${formatAgo(ban.expires_at)})`
+              : 'never: permanent'}
+          </dd>
+        </dl>
+      )}
+    </li>
+  )
+}
+
+// Minutes; null: permanent.
+const DURATIONS: { value: string; label: string; minutes: number | null }[] = [
+  { value: 'permanent', label: 'permanent', minutes: null },
+  { value: '1h', label: '1 hour', minutes: 60 },
+  { value: '1d', label: '1 day', minutes: 60 * 24 },
+  { value: '7d', label: '7 days', minutes: 60 * 24 * 7 },
+  { value: '30d', label: '30 days', minutes: 60 * 24 * 30 },
+  { value: 'custom', label: 'custom', minutes: null },
+]
+
 function BanDialog({
   serverId,
   player,
@@ -212,13 +269,21 @@ function BanDialog({
   const [value, setValue] = useState('')
   const [reason, setReason] = useState('')
   const [alsoIp, setAlsoIp] = useState(false)
+  const [duration, setDuration] = useState('permanent')
+  const [customAmount, setCustomAmount] = useState('3')
+  const [customUnit, setCustomUnit] = useState<'hours' | 'days'>('days')
   const [failed, setFailed] = useState<string | null>(null)
   const title = player ? `ban ${displayName(player)}?` : 'ban'
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setFailed(null)
-    const extra = reason.trim() ? { reason: reason.trim() } : {}
+    const preset = DURATIONS.find((d) => d.value === duration)!
+    const minutes =
+      duration === 'custom'
+        ? Math.round(Number(customAmount) * (customUnit === 'days' ? 60 * 24 : 60))
+        : preset.minutes
+    const extra = { ...(reason.trim() ? { reason: reason.trim() } : {}), ...(minutes ? { minutes } : {}) }
     try {
       let result
       if (player) {
@@ -255,6 +320,47 @@ function BanDialog({
             />
           </>
         )}
+        <div>
+          <label htmlFor="ban-duration" className="mb-1.5 block text-sm font-medium">
+            for how long
+          </label>
+          <select
+            id="ban-duration"
+            className={inputClass}
+            value={duration}
+            onChange={(e) => setDuration(e.target.value)}
+          >
+            {DURATIONS.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          {duration === 'custom' && (
+            <div className="mt-2 flex gap-2">
+              <input
+                type="number"
+                min={1}
+                aria-label="how many"
+                className={inputClass}
+                value={customAmount}
+                onChange={(e) => setCustomAmount(e.target.value)}
+              />
+              <select
+                aria-label="unit"
+                className={inputClass}
+                value={customUnit}
+                onChange={(e) => setCustomUnit(e.target.value as 'hours' | 'days')}
+              >
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </div>
+          )}
+          {duration !== 'permanent' && (
+            <p className="mt-1.5 text-xs text-muted">the panel lifts the ban when the time is up.</p>
+          )}
+        </div>
         <input
           aria-label="reason"
           placeholder="reason (optional)"
@@ -281,7 +387,11 @@ function BanDialog({
             type="submit"
             variant="danger"
             className="flex-1"
-            disabled={actions.ban.isPending || (!player && !value.trim())}
+            disabled={
+              actions.ban.isPending ||
+              (!player && !value.trim()) ||
+              (duration === 'custom' && !(Number(customAmount) > 0))
+            }
           >
             ban
           </Button>

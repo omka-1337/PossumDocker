@@ -22,6 +22,10 @@ export interface BanInfo {
   value: string
   name: string | null
   reason: string | null
+  banned_at: string | null
+  // null: permanent (or unknown, for a ban made in the game)
+  expires_at: string | null
+  banned_by: string | null
 }
 
 export interface PlayerAbilities {
@@ -68,7 +72,7 @@ export function usePlayerActions(serverId: string) {
       onSettled: refresh,
     }),
     ban: useMutation({
-      mutationFn: (body: { kind: BanKind; key?: string; value?: string; reason?: string }) =>
+      mutationFn: (body: { kind: BanKind; key?: string; value?: string; reason?: string; minutes?: number }) =>
         post<{ effective: Effective }>('ban', body),
       onSettled: refresh,
     }),

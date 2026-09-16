@@ -163,7 +163,7 @@ players:
         name: "{{ name }}"
         created: "{{ now }}"
         source: PossumDocker
-        expires: forever
+        expires: "{{ expires }}"
         reason: "{{ reason or 'Banned by an operator.' }}"
   ip_bans:
     add: ["ban-ip {{ ip }}{{ ' ' ~ reason if reason }}"]
@@ -176,7 +176,7 @@ players:
         ip: "{{ ip }}"
         created: "{{ now }}"
         source: PossumDocker
-        expires: forever
+        expires: "{{ expires }}"
         reason: "{{ reason or 'Banned by an operator.' }}"
 
 query:

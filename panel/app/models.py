@@ -168,19 +168,27 @@ class Player(Base):
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 
-class PanelBan(Base):
-    """A ban the panel itself enforces, for games that have none (Minecraft Bedrock)."""
+class BanRecord(Base):
+    """A ban made through the panel: what game ban lists don't keep (reason, who, until when).
 
-    __tablename__ = "panel_bans"
+    For games without bans (Minecraft Bedrock) it is the ban list itself, enforced by the panel.
+    """
+
+    __tablename__ = "ban_records"
     __table_args__ = (UniqueConstraint("server_id", "kind", "value"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     server_id: Mapped[str] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"), index=True)
-    # "player" (value: the player's key) or "ip"
+    # "player" or "ip"
     kind: Mapped[str] = mapped_column(String(8))
+    # As the game's list has it: a name, a SteamID, an address (panel-enforced: the player's key).
     value: Mapped[str] = mapped_column(String(200))
     reason: Mapped[str | None] = mapped_column(String(200), default=None)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    # None: permanent. The panel lifts it once this passes.
+    expires_at: Mapped[datetime | None] = mapped_column(UTCDateTime, default=None, index=True)
+    # Username of whoever banned; kept if the account is deleted.
+    banned_by: Mapped[str | None] = mapped_column(String(32), default=None)
 
 
 class User(Base):

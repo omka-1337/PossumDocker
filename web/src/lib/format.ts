@@ -16,6 +16,14 @@ export function formatDate(unixSeconds: number): string {
   return dateFormat.format(unixSeconds * 1000)
 }
 
+const timeFormat = new Intl.DateTimeFormat(undefined, { timeStyle: 'short' })
+
+/** "17:05" today, the date and time otherwise: a moment that doesn't tick like "5 minutes ago". */
+export function formatMoment(iso: string): string {
+  const date = new Date(iso)
+  return date.toDateString() === new Date().toDateString() ? timeFormat.format(date) : dateFormat.format(date)
+}
+
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
 
 /** "5 minutes ago", "yesterday": for times that matter by how long ago they were. */

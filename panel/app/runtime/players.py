@@ -12,13 +12,13 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import delete, select, update
 
 from app.games.schema import BanFile, BanSpec, PlayersSpec, Template
-from app.models import PanelBan, Player, Server, ServerState
+from app.models import BanRecord, Player, Server, ServerState
 from app.runtime.spec import _render
 from app.runtime.state import RUNTIME_ERRORS, parse_docker_time
 
@@ -36,6 +36,8 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 UNSAFE = re.compile(r'["\\;\x00-\x1f\x7f]')
 
 BanKind = Literal["player", "ip"]
+# When a ban or unban takes effect.
+Effective = Literal["now", "after restart", "on join"]
 
 # A ban file entry needs something only the game knows, like a Minecraft UUID for a name nobody has seen here.
 NOT_ENOUGH_KNOWN = "this player hasn't played on this server yet: start the server to ban them"
@@ -55,6 +57,28 @@ class BanEntry:
     value: str
     name: str | None = None
     reason: str | None = None
+    banned_at: datetime | None = None
+    # None: permanent.
+    expires_at: datetime | None = None
+    banned_by: str | None = None
+
+
+@dataclass
+class ListedBan:
+    """An entry of a game's own ban list."""
+
+    value: str
+    reason: str | None = None
+    created: datetime | None = None
+    expires: datetime | None = None
+
+
+def _minecraft_time(text: object) -> datetime | None:
+    """ "2026-09-16 12:00:00 +0000"; "forever" and anything else: None."""
+    try:
+        return datetime.strptime(str(text), "%Y-%m-%d %H:%M:%S %z").astimezone(UTC)
+    except ValueError:
+        return None
 
 
 @dataclass
@@ -155,6 +179,12 @@ class PlayerService:
                 raise
             except Exception:
                 log.exception("updating player watchers failed")
+            try:
+                await self.lift_expired()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                log.exception("lifting temporary bans failed")
             await asyncio.sleep(SUPERVISE_SECONDS)
 
     async def _watch(self, server_id: str) -> None:
@@ -368,6 +398,7 @@ class PlayerService:
             "reason": None,
             # Minecraft's ban files: "2026-09-16 12:00:00 +0000"
             "now": datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S +0000"),
+            "expires": "forever",
         }
         context.update({k: v for k, v in extra.items() if v is not None})
         return context
@@ -403,6 +434,11 @@ class PlayerService:
             raise PlayerError("this game can't ban " + ("players" if kind == "player" else "IP addresses"))
         return ban
 
+    async def _records(self, server_id: str) -> dict[tuple[str, str], BanRecord]:
+        async with self._sessionmaker() as session:
+            rows = await session.scalars(select(BanRecord).where(BanRecord.server_id == server_id))
+            return {(row.kind, row.value): row for row in rows}
+
     async def list_bans(self, server: Server) -> list[BanEntry]:
         spec = self.spec(server)
         if not spec:
@@ -410,30 +446,54 @@ class PlayerService:
         async with self._sessionmaker() as session:
             players = list(await session.scalars(select(Player).where(Player.server_id == server.id)))
         by_id = {p.game_id: p for p in players if p.game_id}
+        records = await self._records(server.id)
         entries: list[BanEntry] = []
         for kind, ban in (("player", spec.bans), ("ip", spec.ip_bans)):
             if ban is None:
                 continue
             if ban.by_panel:
-                async with self._sessionmaker() as session:
-                    rows = await session.scalars(
-                        select(PanelBan).where(PanelBan.server_id == server.id, PanelBan.kind == kind)
-                    )
-                    for row in rows:
-                        name = row.value.split(":", 1)[1] if row.value.startswith("name:") else None
-                        entries.append(BanEntry(kind, row.value, name=name, reason=row.reason))
+                for (record_kind, value), record in records.items():
+                    if record_kind == kind:
+                        name = value.split(":", 1)[1] if value.startswith("name:") else None
+                        entries.append(self._entry(kind, value, name, None, record))
             elif ban.file:
-                for value, reason in await self._read_ban_file(server, ban.file):
-                    name = by_id[value].name if ban.by == "id" and value in by_id else None
-                    entries.append(BanEntry(kind, value, name=name, reason=reason))
+                listed = await self._read_ban_file(server, ban.file)
+                for item in listed:
+                    name = by_id[item.value].name if ban.by == "id" and item.value in by_id else None
+                    entries.append(self._entry(kind, item.value, name, item, records.get((kind, item.value))))
+                # Lifted in the game (or by hand): forget the panel's details, but not a ban just sent.
+                values = {item.value for item in listed}
+                stale = [
+                    r.id
+                    for (k, v), r in records.items()
+                    if k == kind and v not in values and time.time() - r.created_at.timestamp() > 60
+                ]
+                if stale:
+                    async with self._sessionmaker() as session:
+                        await session.execute(delete(BanRecord).where(BanRecord.id.in_(stale)))
+                        await session.commit()
         return entries
 
-    async def _read_ban_file(self, server: Server, ban_file: BanFile) -> list[tuple[str, str | None]]:
+    @staticmethod
+    def _entry(
+        kind: BanKind, value: str, name: str | None, listed: "ListedBan | None", record: BanRecord | None
+    ) -> BanEntry:
+        return BanEntry(
+            kind,
+            value,
+            name=name,
+            reason=(record.reason if record else None) or (listed.reason if listed else None),
+            banned_at=record.created_at if record else (listed.created if listed else None),
+            expires_at=record.expires_at if record else (listed.expires if listed else None),
+            banned_by=record.banned_by if record else None,
+        )
+
+    async def _read_ban_file(self, server: Server, ban_file: BanFile) -> list["ListedBan"]:
         data = await self.manager.read_game_file(server, ban_file.path)
         if not data:
             return []
         text = data.decode("utf-8", errors="replace")
-        values: list[tuple[str, str | None]] = []
+        values: list[ListedBan] = []
         if ban_file.format == "json":
             try:
                 items = json.loads(text)
@@ -441,9 +501,17 @@ class PlayerService:
                 return []
             for item in items if isinstance(items, list) else []:
                 if isinstance(item, str):
-                    values.append((item, None))
+                    values.append(ListedBan(item))
                 elif isinstance(item, dict) and ban_file.field and isinstance(item.get(ban_file.field), str):
-                    values.append((item[ban_file.field], item.get("reason")))
+                    # Minecraft keeps "created" and "expires" ("forever" or a time) in its lists.
+                    values.append(
+                        ListedBan(
+                            item[ban_file.field],
+                            reason=item.get("reason") or None,
+                            created=_minecraft_time(item.get("created")),
+                            expires=_minecraft_time(item.get("expires")),
+                        )
+                    )
         else:
             for line in text.splitlines():
                 line = line.strip()
@@ -451,9 +519,9 @@ class PlayerService:
                     continue
                 if ban_file.pattern:
                     if match := re.search(ban_file.pattern, line):
-                        values.append((match.group(1), None))
+                        values.append(ListedBan(match.group(1)))
                 else:
-                    values.append((line, None))
+                    values.append(ListedBan(line))
         return values
 
     async def _edit_ban_file(
@@ -462,6 +530,7 @@ class PlayerService:
         """Add an entry (context given) or remove every entry for `value`."""
         data = await self.manager.read_game_file(server, ban_file.path) or b""
         text = data.decode("utf-8", errors="replace")
+        known = {k: v for k, v in (context or {}).items() if v is not None or k == "reason"}
         if ban_file.format == "json":
             try:
                 items = json.loads(text) if text.strip() else []
@@ -476,7 +545,6 @@ class PlayerService:
             items = [item for item in items if not matches(item)]
             if context is not None:
                 try:
-                    known = {k: v for k, v in context.items() if v is not None or k == "reason"}
                     items.append({k: _render(v, known, strict=True) for k, v in ban_file.entry.items()})
                 except Exception as exc:
                     raise PlayerError(NOT_ENOUGH_KNOWN) from exc
@@ -492,7 +560,6 @@ class PlayerService:
                     continue
                 lines.append(line)
             if context is not None:
-                known = {k: v for k, v in context.items() if v is not None or k == "reason"}
                 try:
                     lines.append(_render(ban_file.line, known, strict=True))
                 except Exception as exc:
@@ -508,24 +575,29 @@ class PlayerService:
         key: str | None = None,
         value: str | None = None,
         reason: str | None = None,
-    ) -> Literal["now", "after restart", "on join"]:
+        minutes: int | None = None,
+        banned_by: str | None = None,
+    ) -> Effective:
         """Ban a known player (key) or a value typed in (a name, an id, an address).
 
-        Returns when it takes effect.
+        `minutes`: a temporary ban, lifted by the panel once it's over. Returns when it takes effect.
         """
         ban = self._ban_spec(server, kind)
         spec = self.spec(server)
         reason = clean_value(reason, "reason", 200) if reason else None
         player = await self.get_player(server, key) if key else None
+        expires_at = datetime.now(UTC) + timedelta(minutes=minutes) if minutes else None
+        # Minecraft's own lists take an end time, so the game lifts it even if the panel is down.
+        expires = expires_at.strftime("%Y-%m-%d %H:%M:%S +0000") if expires_at else "forever"
 
         if kind == "ip":
             target = clean_ip(value if value else (player.ip if player and player.ip else ""))
-            context = self._context(player, ip=target, reason=reason)
+            context = self._context(player, ip=target, reason=reason, expires=expires)
         elif player:
             target = player.game_id if ban.by == "id" else player.name
             if not target:
                 raise PlayerError(f"the game hasn't told this player's {ban.by} yet")
-            context = self._context(player, reason=reason)
+            context = self._context(player, reason=reason, expires=expires)
         else:
             target = clean_value(value or "", "name" if ban.by == "name" else "id")
             async with self._sessionmaker() as session:
@@ -533,59 +605,94 @@ class PlayerService:
                 player = await session.scalar(
                     select(Player).where(Player.server_id == server.id, column == target)
                 )
-            context = self._context(player, **{"id" if ban.by == "id" else "name": target, "reason": reason})
+            context = self._context(
+                player, **{"id" if ban.by == "id" else "name": target, "reason": reason, "expires": expires}
+            )
         for label in ("name", "id", "slot"):
             if context.get(label):
                 clean_value(context[label], label)
 
         running = await self._is_running(server)
         if ban.by_panel:
-            stored = (player.key if player else f"{ban.by}:{target}") if kind == "player" else target
-            async with self._sessionmaker() as session:
-                exists = await session.scalar(
-                    select(PanelBan).where(
-                        PanelBan.server_id == server.id, PanelBan.kind == kind, PanelBan.value == stored
-                    )
-                )
-                if not exists:
-                    session.add(PanelBan(server_id=server.id, kind=kind, value=stored, reason=reason))
-                    await session.commit()
-            if running and player and player.online:
-                await self._send_kick(server, spec, player, reason)
-            return "on join"
-        if running and ban.add:
+            target = (player.key if player else f"{ban.by}:{target}") if kind == "player" else target
+            effective: Effective = "on join"
+        elif running and ban.add:
             await self._send(server, ban.add, context)
-            return "now"
-        if ban.file and ban.file.writable:
+            effective = "now"
+        elif ban.file and ban.file.writable:
             await self._edit_ban_file(server, ban.file, target, context)
-            if running and ban.file_needs_restart:
-                return "after restart"
-            return "now"
-        raise PlayerError("start the server to ban players on this game")
+            effective = "after restart" if running and ban.file_needs_restart else "now"
+        else:
+            raise PlayerError("start the server to ban players on this game")
 
-    async def unban(
-        self, server: Server, kind: BanKind, value: str
-    ) -> Literal["now", "after restart", "on join"]:
+        async with self._sessionmaker() as session:
+            await session.execute(
+                delete(BanRecord).where(
+                    BanRecord.server_id == server.id, BanRecord.kind == kind, BanRecord.value == target
+                )
+            )
+            session.add(
+                BanRecord(
+                    server_id=server.id,
+                    kind=kind,
+                    value=target,
+                    reason=reason,
+                    expires_at=expires_at,
+                    banned_by=banned_by,
+                )
+            )
+            await session.commit()
+        if ban.by_panel and running and player and player.online:
+            await self._send_kick(server, spec, player, reason)
+        return effective
+
+    async def unban(self, server: Server, kind: BanKind, value: str) -> Effective:
         ban = self._ban_spec(server, kind)
         value = clean_ip(value) if kind == "ip" and not ban.by_panel else clean_value(value, "value", 200)
         running = await self._is_running(server)
-        if ban.by_panel:
-            async with self._sessionmaker() as session:
-                await session.execute(
-                    delete(PanelBan).where(
-                        PanelBan.server_id == server.id, PanelBan.kind == kind, PanelBan.value == value
+        effective: Effective = "now"
+        if not ban.by_panel:
+            context = self._context(**{"ip" if kind == "ip" else ban.by: value})
+            if running and ban.remove:
+                await self._send(server, ban.remove, context)
+            elif ban.file and ban.file.writable:
+                await self._edit_ban_file(server, ban.file, value, None)
+                if running and ban.file_needs_restart:
+                    effective = "after restart"
+            else:
+                raise PlayerError("start the server to unban players on this game")
+        async with self._sessionmaker() as session:
+            await session.execute(
+                delete(BanRecord).where(
+                    BanRecord.server_id == server.id, BanRecord.kind == kind, BanRecord.value == value
+                )
+            )
+            await session.commit()
+        return effective
+
+    async def lift_expired(self) -> None:
+        """End temporary bans whose time is up. One that can't be lifted yet (the game needs to run
+        for that) is tried again on the next round."""
+        async with self._sessionmaker() as session:
+            due = list(
+                await session.scalars(
+                    select(BanRecord).where(
+                        BanRecord.expires_at.is_not(None), BanRecord.expires_at <= _at(time.time())
                     )
                 )
-                await session.commit()
-            return "now"
-        context = self._context(**{"ip" if kind == "ip" else ban.by: value})
-        if running and ban.remove:
-            await self._send(server, ban.remove, context)
-            return "now"
-        if ban.file and ban.file.writable:
-            await self._edit_ban_file(server, ban.file, value, None)
-            return "after restart" if running and ban.file_needs_restart else "now"
-        raise PlayerError("start the server to unban players on this game")
+            )
+        from app.runtime.manager import ServerBusy
+
+        for record in due:
+            async with self._sessionmaker() as session:
+                server = await session.get(Server, record.server_id)
+            if server is None:
+                continue
+            try:
+                await self.unban(server, record.kind, record.value)
+                log.info("temporary ban of %s on %s is over", record.value, server.id)
+            except (PlayerError, ServerBusy, ValueError, *RUNTIME_ERRORS) as exc:
+                log.debug("can't lift the ban of %s on %s yet: %s", record.value, server.id, exc)
 
     async def _enforce_panel_bans(self, server: Server, spec: PlayersSpec, player: Player) -> None:
         """Games without bans: kick a banned player the moment they join."""
@@ -596,14 +703,15 @@ class PlayerService:
             checks.append(("ip", player.ip))
         if not checks:
             return
+        now = _at(time.time())
         async with self._sessionmaker() as session:
             for kind, value in checks:
                 row = await session.scalar(
-                    select(PanelBan).where(
-                        PanelBan.server_id == server.id, PanelBan.kind == kind, PanelBan.value == value
+                    select(BanRecord).where(
+                        BanRecord.server_id == server.id, BanRecord.kind == kind, BanRecord.value == value
                     )
                 )
-                if row:
+                if row and (row.expires_at is None or row.expires_at > now):
                     try:
                         await self._send_kick(server, spec, player, row.reason or "banned")
                     except PlayerError:

@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-react'
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -117,23 +118,41 @@ export function FileBrowser({ serverId }: { serverId: string }) {
   const dragging = useRef<{ dir: string; names: string[] } | null>(null)
   const uploadSeq = useRef(0)
 
-  // Typing filters this folder; Enter searches every folder under it.
-  const [filter, setFilter] = useState('')
+  // Search bar, like Dolphin's: names under this folder ("here") or anywhere on the server.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<'here' | 'everywhere'>('here')
   const [searching, setSearching] = useState<string | null>(null)
-  const search = useFileSearch(serverId, path, searching)
+  const searchInput = useRef<HTMLInputElement>(null)
+  const search = useFileSearch(serverId, scope === 'here' ? path : '', searching)
+
+  // Results follow the typing, once it pauses.
+  useEffect(() => {
+    const text = query.trim()
+    const timer = setTimeout(() => setSearching(text.length >= 2 ? text : null), 350)
+    return () => clearTimeout(timer)
+  }, [query])
+
+  const openSearch = () => {
+    setSearchOpen(true)
+    setTimeout(() => searchInput.current?.focus())
+  }
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setQuery('')
+    setSearching(null)
+    areaRef.current?.focus()
+  }
 
   const entries = useMemo(() => {
-    const needle = filter.trim().toLowerCase()
-    const visible = (listing?.entries ?? []).filter(
-      (e) => (showHidden || !e.name.startsWith('.')) && (!needle || e.name.toLowerCase().includes(needle)),
-    )
+    const visible = (listing?.entries ?? []).filter((e) => showHidden || !e.name.startsWith('.'))
     const value = (e: FileEntry) => (sort.key === 'name' ? e.name.toLowerCase() : sort.key === 'size' ? e.size : e.mtime)
     return visible.sort((a, b) => {
       if ((a.type === 'dir') !== (b.type === 'dir')) return a.type === 'dir' ? -1 : 1 // folders first, always
       const [x, y] = [value(a), value(b)]
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir
     })
-  }, [listing, showHidden, sort, filter])
+  }, [listing, showHidden, sort])
 
   const selectedEntries = entries.filter((e) => selected.has(e.name))
   const fail = (e: Error) => setActionError(e.message)
@@ -142,8 +161,6 @@ export function FileBrowser({ serverId }: { serverId: string }) {
 
   const navigate = useCallback(
     (to: string) => {
-      setFilter('')
-      setSearching(null)
       if (to === path) return
       setBack((b) => [...b, path])
       setForward([])
@@ -366,6 +383,7 @@ export function FileBrowser({ serverId }: { serverId: string }) {
     { when: (e) => mod(e) && e.key === 'x' && selected.size > 0, run: () => setClipboard({ mode: 'cut', dir: path, names: [...selected] }) },
     { when: (e) => mod(e) && e.key === 'v', run: () => paste() },
     { when: (e) => mod(e) && e.key === 'h', run: () => setShowHidden(!showHidden) },
+    { when: (e) => mod(e) && e.key === 'f', run: openSearch },
     { when: (e) => e.key === 'Delete' && selected.size > 0, run: () => setDialog('delete') },
     { when: (e) => e.key === 'F2' && selected.size === 1, run: () => setRenaming([...selected][0]) },
     { when: (e) => e.key === 'F5', run: () => actions.refresh() },
@@ -471,41 +489,15 @@ export function FileBrowser({ serverId }: { serverId: string }) {
           })}
         </nav>
 
-        <label className="flex h-9 w-full items-center gap-1.5 rounded-lg bg-page px-2 text-sm sm:w-44 sm:shrink-0">
-          <IconSearch size={15} className="shrink-0 text-muted" />
-          <input
-            aria-label="search files"
-            placeholder="search"
-            className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-muted"
-            value={filter}
-            title="type to filter this folder, Enter to search every folder under it"
-            onChange={(e) => {
-              setFilter(e.target.value)
-              setSearching(null)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && filter.trim().length >= 2) setSearching(filter.trim())
-              if (e.key === 'Escape') {
-                setFilter('')
-                setSearching(null)
-              }
-            }}
-          />
-          {filter && (
-            <button
-              type="button"
-              aria-label="clear search"
-              className="shrink-0 text-muted hover:text-zinc-200"
-              onClick={() => {
-                setFilter('')
-                setSearching(null)
-              }}
-            >
-              <IconX size={14} />
-            </button>
-          )}
-        </label>
-
+        <IconButton
+          onClick={() => (searchOpen ? closeSearch() : openSearch())}
+          aria-label="search"
+          title="search (Ctrl+F)"
+          aria-pressed={searchOpen}
+          className={searchOpen ? 'bg-raised' : ''}
+        >
+          <IconSearch size={18} />
+        </IconButton>
         <IconButton onClick={() => setDialog('mkdir')} aria-label="new folder" title="new folder">
           <IconFolderPlus size={18} />
         </IconButton>
@@ -516,6 +508,41 @@ export function FileBrowser({ serverId }: { serverId: string }) {
           {view === 'icons' ? <IconList size={18} /> : <IconLayoutGrid size={18} />}
         </IconButton>
       </div>
+
+      {searchOpen && (
+        <div className="space-y-2 border-b border-line-soft p-1.5">
+          <div className="flex items-center gap-1">
+            <input
+              ref={searchInput}
+              aria-label="search files"
+              placeholder="search…"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-page px-3 text-sm outline-none placeholder:text-muted focus:border-zinc-400"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && query.trim().length >= 2) setSearching(query.trim())
+                if (e.key === 'Escape') closeSearch()
+              }}
+            />
+            <IconButton onClick={closeSearch} aria-label="close search" title="close search">
+              <IconX size={18} />
+            </IconButton>
+          </div>
+          <div className="flex gap-1 text-sm">
+            {(['here', 'everywhere'] as const).map((value) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={scope === value}
+                onClick={() => setScope(value)}
+                className={`rounded-lg px-3 py-1 transition ${scope === value ? 'bg-raised text-zinc-100' : 'text-muted hover:bg-panel'}`}
+              >
+                {value}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* files */}
       <div
@@ -542,25 +569,18 @@ export function FileBrowser({ serverId }: { serverId: string }) {
               <IconArrowUp size={16} /> go to the parent folder
             </Button>
           </div>
-        ) : searching !== null ? (
+        ) : searchOpen && searching !== null ? (
           <SearchResultsList
             query={searching}
             results={search.data}
             loading={search.isFetching}
             error={search.error}
             onPick={(match) => {
-              const parent = parentPath(match.path)
-              navigate(parent)
+              closeSearch()
+              navigate(parentPath(match.path))
               setSelected(new Set([baseName(match.path)]))
             }}
           />
-        ) : entries.length === 0 && listing && filter.trim() ? (
-          <div className="grid h-full place-items-center text-center text-sm text-muted">
-            <div>
-              <p>nothing in this folder matches &quot;{filter.trim()}&quot;</p>
-              <p className="mt-1 text-xs">press Enter to search every folder under it</p>
-            </div>
-          </div>
         ) : entries.length === 0 && listing ? (
           <div className="grid h-full place-items-center text-center text-sm text-muted">
             <div>

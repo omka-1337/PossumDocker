@@ -45,7 +45,7 @@ export function LoginPage() {
             {login.isPending ? 'logging in…' : 'log in'}
           </Button>
         </div>
-        <p className="mt-4 text-center text-xs text-muted">forgot the password? run `make admin` on the server.</p>
+        <p className="mt-4 text-center text-xs text-muted">forgot the password? run `./possum admin` on the server.</p>
       </form>
     </div>
   )

@@ -40,7 +40,7 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
-          # 0.2.0, 0.2 and latest: the Makefile pulls the exact version of the checked-out release.
+          # 0.2.0, 0.2 and latest: ./possum pulls the exact version of the checked-out release.
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}

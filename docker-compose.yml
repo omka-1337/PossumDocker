@@ -1,4 +1,4 @@
-# Started by `make start`; settings come from .env, which `make start` creates on the first run.
+# Started by `./possum start`; settings come from .env, which `./possum start` creates on the first run.
 name: possumdocker
 
 services:
@@ -7,14 +7,14 @@ services:
     image: ghcr.io/omka-1337/possumdocker-panel:${POSSUM_VERSION:-dev}
     build: .
     restart: unless-stopped
-    # Same user as the one who ran `make start`, so the data folder stays theirs.
+    # Same user as the one who ran `./possum start`, so the data folder stays theirs.
     user: "${POSSUM_UID:-1000}:${POSSUM_GID:-1000}"
     ports:
       - "${POSSUM_PORT:-8080}:8080"
     environment:
       # The panel has no access to Docker at all: it asks the agent.
       POSSUM_AGENT_URL: http://agent:8081
-      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run make start}"
+      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run ./possum start}"
       POSSUM_TIMEZONE: "${POSSUM_TIMEZONE:-}"
       # Behind a reverse proxy: its address, so the panel sees visitors' real IPs and HTTPS.
       FORWARDED_ALLOW_IPS: "${POSSUM_TRUSTED_PROXIES:-127.0.0.1}"
@@ -31,7 +31,7 @@ services:
     build: ./agent
     restart: unless-stopped
     environment:
-      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run make start}"
+      POSSUM_AGENT_TOKEN: "${POSSUM_AGENT_TOKEN:?missing in .env, run ./possum start}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks: [agent]

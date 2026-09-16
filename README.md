@@ -19,24 +19,24 @@ Self-hosted panel for creating and running game servers — from Minecraft to Co
 
 ## Install
 
-Needs Docker with Compose, `make` and `git` on a Linux machine.
+Needs Docker with the Compose plugin and `git` on a Linux machine.
 
 ```bash
 git clone https://github.com/omka-1337/PossumDocker.git
 cd PossumDocker
-make start
+./possum start
 ```
 
-The first `make start` builds the panel, asks for an administrator account and prints the address
+The first `./possum start` downloads the panel, asks for an administrator account and prints the address
 (port 8080 by default, change it in `.env`).
 
 | Command | |
 |---|---|
-| `make start` | build and start the panel |
-| `make stop` | stop the panel; game servers keep running |
-| `make update` | pull the latest version from GitHub and restart |
-| `make logs` | follow the panel's logs |
-| `make admin` | add an administrator or reset a forgotten password |
+| `./possum start` | start the panel |
+| `./possum stop` | stop the panel; game servers keep running |
+| `./possum update` | download the latest version from GitHub and restart |
+| `./possum logs` | follow the panel's logs |
+| `./possum admin` | add an administrator or reset a forgotten password |
 
 Everything the panel keeps (database, backups) is in `data/`. Game servers live in Docker volumes named `possum-<id>-data`.
 

@@ -14,7 +14,7 @@ This is a small project maintained by one person, so there is no bug bounty.
 
 ## Supported versions
 
-Only the latest release gets security fixes. Update with `make update`.
+Only the latest release gets security fixes. Update with `./possum update`.
 
 ## How PossumDocker is meant to be run
 

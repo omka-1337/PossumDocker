@@ -1,4 +1,4 @@
-"""Terminal commands, run by the Makefile inside the panel container.
+"""Terminal commands, run by ./possum inside the panel container.
 
 python -m app.cli ensure-admin   first start: create the administrator if there are no users yet
 python -m app.cli create-admin   add an administrator, or reset one's password

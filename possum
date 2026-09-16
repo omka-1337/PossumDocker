@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# PossumDocker: start, stop and update the panel. Needs Docker with Compose and git, nothing else.
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")"
+
+usage() {
+  cat <<'USAGE'
+Usage: ./possum COMMAND
+
+  start    start the panel; asks for an administrator account on the first start
+  stop     stop the panel (game servers keep running)
+  update   download the latest version from GitHub and restart the panel
+  logs     follow the panel's logs
+  admin    add an administrator or reset a forgotten password
+USAGE
+}
+
+fail() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+compose() {
+  docker compose "$@"
+}
+
+# Password prompts need a terminal; without one (scripts) answers are read from stdin.
+panel_exec() {
+  if [[ -t 0 ]]; then compose exec panel "$@"; else compose exec -T panel "$@"; fi
+}
+
+check_docker() {
+  command -v docker >/dev/null || fail "Docker isn't installed: https://docs.docker.com/engine/install/"
+  docker compose version >/dev/null 2>&1 ||
+    fail "the Docker Compose plugin is missing ('docker compose'): https://docs.docker.com/compose/install/linux/"
+  docker info >/dev/null 2>&1 ||
+    fail "can't talk to Docker. Is it running? Is your user in the docker group? (sudo usermod -aG docker \$USER, then log in again)"
+}
+
+# On a release (the checkout is at a version tag) ready-made images are downloaded; otherwise they are built.
+detect_version() {
+  local tag
+  tag=$(git describe --tags --exact-match 2>/dev/null || true)
+  export POSSUM_VERSION=${tag#v}
+  POSSUM_VERSION=${POSSUM_VERSION:-dev}
+}
+
+# Settings for this machine, written once. Edit .env to change the port or time zone.
+ensure_env() {
+  if [[ ! -f .env ]]; then
+    local tz
+    tz=$(timedatectl show -p Timezone --value 2>/dev/null || readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||' || true)
+    {
+      echo "POSSUM_PORT=8080"
+      echo "POSSUM_UID=$(id -u)"
+      echo "POSSUM_GID=$(id -g)"
+      echo "POSSUM_TIMEZONE=${tz:-UTC}"
+    } >.env
+    echo "Created .env:"
+    sed 's/^/  /' .env
+  fi
+  # The secret the panel and the agent share. Also added to an .env from an older version.
+  if ! grep -q '^POSSUM_AGENT_TOKEN=' .env; then
+    echo "POSSUM_AGENT_TOKEN=$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')" >>.env
+  fi
+  # The agent token and the database (password hashes) are for this user only.
+  mkdir -p data
+  chmod 600 .env
+  chmod 700 data
+}
+
+up() {
+  if [[ $POSSUM_VERSION != dev ]] && compose pull --quiet panel agent; then
+    compose up -d --no-build --remove-orphans
+  else
+    [[ $POSSUM_VERSION == dev ]] || echo "No published images for $POSSUM_VERSION, building them here instead"
+    compose up -d --build --remove-orphans
+  fi
+}
+
+wait_healthy() {
+  echo -n "Waiting for the panel"
+  local status
+  for _ in $(seq 1 60); do
+    status=$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q panel)" 2>/dev/null || true)
+    if [[ $status == healthy ]]; then
+      echo " ready"
+      return
+    fi
+    echo -n "."
+    sleep 2
+  done
+  echo
+  fail "the panel didn't start. See: ./possum logs"
+}
+
+port() {
+  grep '^POSSUM_PORT=' .env | cut -d= -f2
+}
+
+command=${1:-}
+case $command in
+  start)
+    check_docker
+    detect_version
+    ensure_env
+    up
+    wait_healthy
+    panel_exec python -m app.cli ensure-admin
+    echo "The panel is running at http://localhost:$(port)"
+    ;;
+  stop)
+    compose down
+    ;;
+  update)
+    check_docker
+    git pull --ff-only || fail "can't update: this copy has local changes or has diverged from GitHub"
+    # Run the updated script: this one may be out of date now.
+    exec ./possum restart
+    ;;
+  restart)
+    check_docker
+    detect_version
+    ensure_env
+    up
+    wait_healthy
+    echo "The panel is running at http://localhost:$(port)"
+    ;;
+  logs)
+    compose logs -f panel
+    ;;
+  admin)
+    panel_exec python -m app.cli create-admin
+    ;;
+  -h | --help | help | "")
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

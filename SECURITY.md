@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please don't open a public issue for a security problem. Report it privately instead:
-**[Report a vulnerability](https://github.com/omka-1337/PossumDocker/security/advisories/new)**
+**[Report a vulnerability](https://github.com/omka-1337/possum/security/advisories/new)**
 (the repository's Security tab). Only the maintainer sees the report.
 
 It helps to include what an attacker needs (an account? which permission?), what they can do with it,
@@ -16,7 +16,7 @@ This is a small project maintained by one person, so there is no bug bounty.
 
 Only the latest release gets security fixes. Update with `./possum update`.
 
-## How PossumDocker is meant to be run
+## How possum is meant to be run
 
 Some things are the design, not vulnerabilities:
 

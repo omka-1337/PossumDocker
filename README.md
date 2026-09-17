@@ -1,8 +1,8 @@
 <p align="center"><img src="web/public/logo.png" alt="" width="128"></p>
 
-# PossumDocker
+# possum
 
-[![CI](https://github.com/omka-1337/PossumDocker/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/omka-1337/PossumDocker/actions/workflows/ci.yml)
+[![CI](https://github.com/omka-1337/possum/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/omka-1337/possum/actions/workflows/ci.yml)
 
 Self-hosted panel for creating and running game servers — from Minecraft to Counter-Strike 1.6 — in Docker containers.
 
@@ -22,8 +22,8 @@ Self-hosted panel for creating and running game servers — from Minecraft to Co
 Needs Docker with the Compose plugin and `git` on a Linux machine.
 
 ```bash
-git clone https://github.com/omka-1337/PossumDocker.git
-cd PossumDocker
+git clone https://github.com/omka-1337/possum.git
+cd possum
 ./possum start
 ```
 
@@ -54,9 +54,9 @@ administrators you would trust with the machine.
 For managing it yourself (plain `docker compose`, Portainer, Dockge) instead of `./possum`:
 
 ```bash
-mkdir possumdocker && cd possumdocker
-curl -fsSLO https://raw.githubusercontent.com/omka-1337/PossumDocker/releases/deploy/docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/omka-1337/PossumDocker/releases/deploy/.env.example -o .env
+mkdir possum && cd possum
+curl -fsSLO https://raw.githubusercontent.com/omka-1337/possum/releases/deploy/docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/omka-1337/possum/releases/deploy/.env.example -o .env
 mkdir data                                   # owned by you, not by root
 sed -i "s/^POSSUM_AGENT_TOKEN=.*/POSSUM_AGENT_TOKEN=$(openssl rand -hex 32)/" .env
 docker compose up -d

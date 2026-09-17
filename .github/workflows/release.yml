@@ -1,5 +1,5 @@
 # A version tag (v0.2.0) publishes ready-made images to GitHub's container registry, so installing
-# PossumDocker downloads two images instead of building them with npm, pip and Go on the user's machine.
+# possum downloads two images instead of building them with npm, pip and Go on the user's machine.
 name: Release images
 
 on:
@@ -22,9 +22,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - image: possumdocker-panel
+          - image: possum-panel
             context: .
-          - image: possumdocker-agent
+          - image: possum-agent
             context: agent
     steps:
       - uses: actions/checkout@v7

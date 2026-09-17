@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/omka-1337/PossumDocker/agent/internal/runtime"
+	"github.com/omka-1337/possum/agent/internal/runtime"
 )
 
 // --- runtime --------------------------------------------------------------------

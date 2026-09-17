@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PossumDocker: start, stop and update the panel. Needs Docker with Compose and git, nothing else.
+# possum: start, stop and update the panel. Needs Docker with Compose and git, nothing else.
 set -euo pipefail
 
 cd "$(dirname "$(readlink -f "$0")")"

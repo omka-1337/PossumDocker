@@ -1,3 +1,3 @@
-module github.com/omka-1337/PossumDocker/agent
+module github.com/omka-1337/possum/agent
 
 go 1.27.1

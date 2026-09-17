@@ -102,6 +102,6 @@ jobs:
           POSSUM_AGENT_TOKEN=ci docker compose config --quiet
           POSSUM_AGENT_TOKEN=ci docker compose -f deploy/docker-compose.yml config --quiet
       - name: Panel image
-        run: docker build --tag possumdocker-panel:ci .
+        run: docker build --tag possum-panel:ci .
       - name: Agent image
-        run: docker build --tag possumdocker-agent:ci agent
+        run: docker build --tag possum-agent:ci agent

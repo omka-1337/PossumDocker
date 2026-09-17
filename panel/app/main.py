@@ -69,7 +69,7 @@ def create_app(
             await docker.close()
         await engine.dispose()
 
-    app = FastAPI(title="PossumDocker Panel", lifespan=lifespan)
+    app = FastAPI(title="possum panel", lifespan=lifespan)
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):

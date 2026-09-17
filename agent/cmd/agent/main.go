@@ -1,4 +1,4 @@
-// The agent: the only part of PossumDocker that talks to Docker. The panel sends it
+// The agent: the only part of possum that talks to Docker. The panel sends it
 // container specs and file operations over HTTP, authenticated with a shared token.
 //
 //	POSSUM_AGENT_TOKEN   required, the same value the panel has
@@ -20,10 +20,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/omka-1337/PossumDocker/agent/internal/api"
-	"github.com/omka-1337/PossumDocker/agent/internal/engine"
-	"github.com/omka-1337/PossumDocker/agent/internal/files"
-	"github.com/omka-1337/PossumDocker/agent/internal/runtime"
+	"github.com/omka-1337/possum/agent/internal/api"
+	"github.com/omka-1337/possum/agent/internal/engine"
+	"github.com/omka-1337/possum/agent/internal/files"
+	"github.com/omka-1337/possum/agent/internal/runtime"
 )
 
 func main() {

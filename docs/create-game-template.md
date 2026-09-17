@@ -1,6 +1,6 @@
 # Add a game
 
-Every game in PossumDocker is one YAML file: a **template**. It describes the form shown when a server is
+Every game in possum is one YAML file: a **template**. It describes the form shown when a server is
 created, the Docker image that runs the game, its ports, and what the panel can do with it (edit its config,
 make backups, colour its console). Adding a game means writing a template, not code.
 
@@ -31,7 +31,7 @@ and Valheim.
 
 ## A complete example
 
-A small, real template: [factorio.yaml](https://github.com/omka-1337/PossumDocker/blob/releases/templates/factorio.yaml).
+A small, real template: [factorio.yaml](https://github.com/omka-1337/possum/blob/releases/templates/factorio.yaml).
 
 ```yaml
 id: factorio
@@ -80,10 +80,10 @@ The other bundled templates show the rest:
 
 | Template | Shows |
 |---|---|
-| [minecraft-java.yaml](https://github.com/omka-1337/PossumDocker/blob/releases/templates/minecraft-java.yaml) | versions fetched at runtime, fields that depend on each other, an install step with the same image, console colours |
-| [cs16.yaml](https://github.com/omka-1337/PossumDocker/blob/releases/templates/cs16.yaml) | an install script with steamcmd, a command line built from fields, a `cvars` config |
-| [valheim.yaml](https://github.com/omka-1337/PossumDocker/blob/releases/templates/valheim.yaml) | two ports that move together, parts of the volume mounted at several paths, a game without console commands |
-| [minecraft-bedrock.yaml](https://github.com/omka-1337/PossumDocker/blob/releases/templates/minecraft-bedrock.yaml) | two templates shown as one game with an edition switch |
+| [minecraft-java.yaml](https://github.com/omka-1337/possum/blob/releases/templates/minecraft-java.yaml) | versions fetched at runtime, fields that depend on each other, an install step with the same image, console colours |
+| [cs16.yaml](https://github.com/omka-1337/possum/blob/releases/templates/cs16.yaml) | an install script with steamcmd, a command line built from fields, a `cvars` config |
+| [valheim.yaml](https://github.com/omka-1337/possum/blob/releases/templates/valheim.yaml) | two ports that move together, parts of the volume mounted at several paths, a game without console commands |
+| [minecraft-bedrock.yaml](https://github.com/omka-1337/possum/blob/releases/templates/minecraft-bedrock.yaml) | two templates shown as one game with an edition switch |
 
 ## Reference
 
@@ -175,7 +175,7 @@ at `runtime.data_path`. It must exit with code 0.
 | `env` | Added to `runtime.env`, so the installer knows the version too. |
 
 Downloads fail sometimes: retry in the script, and check that the game's files are really there before
-exiting with 0 (see [cs16.sh](https://github.com/omka-1337/PossumDocker/blob/releases/templates/install/cs16.sh)).
+exiting with 0 (see [cs16.sh](https://github.com/omka-1337/possum/blob/releases/templates/install/cs16.sh)).
 Without an `install` step the panel only downloads the runtime image; the game then has to download what it
 needs on its first start.
 
@@ -304,7 +304,7 @@ in `order`. They must use the same `name`.
 1. Fork the repository and work on a branch from `dev`.
 2. Add `templates/<id>.yaml`, and `templates/install/<id>.sh` if it needs a script.
 3. For an icon of your own, add it to `templates/icons/` and a row to
-   [templates/icons/README.md](https://github.com/omka-1337/PossumDocker/blob/releases/templates/icons/README.md)
+   [templates/icons/README.md](https://github.com/omka-1337/possum/blob/releases/templates/icons/README.md)
    with its source and license. Art from Steam or from an `art` link isn't stored in the repository.
 4. Test it as above, then run the panel's tests: `cd panel && .venv/bin/pytest` loads every bundled template.
 5. Open a pull request to `dev` saying which game it is, which image it uses and what you tested (joined
@@ -327,7 +327,7 @@ scripts go there too, with paths relative to the template.
 
 A template there with the `id` of a bundled one replaces it: copy `templates/minecraft-java.yaml` to
 `data/templates/` to change how Minecraft servers are set up. It then stays as you left it, also when
-PossumDocker is updated.
+possum is updated.
 
 A broken template in `data/templates/` is skipped (the reason is in `./possum logs`) instead of stopping
 the panel. `./possum check` shows the problems without restarting.

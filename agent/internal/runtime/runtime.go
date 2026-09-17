@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/omka-1337/PossumDocker/agent/internal/engine"
+	"github.com/omka-1337/possum/agent/internal/engine"
 )
 
 // Labels mark what the agent owns, so it never touches other containers on the host.

@@ -163,7 +163,7 @@ players:
         uuid: "{{ id }}"
         name: "{{ name }}"
         created: "{{ now }}"
-        source: PossumDocker
+        source: possum
         expires: "{{ expires }}"
         reason: "{{ reason or 'Banned by an operator.' }}"
   ip_bans:
@@ -176,7 +176,7 @@ players:
       entry:
         ip: "{{ ip }}"
         created: "{{ now }}"
-        source: PossumDocker
+        source: possum
         expires: "{{ expires }}"
         reason: "{{ reason or 'Banned by an operator.' }}"
 

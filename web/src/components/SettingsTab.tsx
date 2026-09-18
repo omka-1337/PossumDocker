@@ -6,6 +6,7 @@ import type { FieldValues, Server, TemplateDetail, TemplateField } from '../api/
 import { initialValues, isVisible } from '../lib/fields'
 import { formatSize } from '../lib/format'
 import { ConfigEditor } from './ConfigEditor'
+import { DeleteServer } from './DeleteServer'
 import { FieldError, FieldInput, inputClass } from './FieldInput'
 import { Button } from './ui'
 
@@ -71,6 +72,17 @@ export function SettingsTab({ server, isAdmin }: { server: Server; isAdmin: bool
           <ConfigEditor server={server} configId={config.id} onRestartNeeded={() => setRestartNeeded(true)} />
         </Section>
       ))}
+
+      {isAdmin && (
+        <Section title="danger zone">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              removes the server with all its files, worlds and backups. this can't be undone.
+            </p>
+            <DeleteServer server={server} />
+          </div>
+        </Section>
+      )}
     </div>
   )
 }

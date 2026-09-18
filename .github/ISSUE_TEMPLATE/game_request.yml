@@ -1,0 +1,50 @@
+name: Game request
+description: Ask for a game possum can't run yet
+title: "Game: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Games are described by templates, not by code, so anyone can add one — see
+        [how to write a game template](https://github.com/omka-1337/possum/blob/releases/docs/create-game-template.md)
+        (the panel shows the same page under "help"). A template you wrote yourself is very welcome
+        as a pull request; this form is for asking.
+
+  - type: input
+    id: game
+    attributes:
+      label: Game
+      placeholder: Terraria
+    validations:
+      required: true
+
+  - type: input
+    id: server-docs
+    attributes:
+      label: Where its dedicated server comes from
+      description: The official download or the documentation for running it.
+      placeholder: https://terraria.org/downloads
+    validations:
+      required: true
+
+  - type: input
+    id: image
+    attributes:
+      label: A Docker image for it, if you know one
+      description: An image that already runs this server, if there is one you trust.
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything special about it
+      description: >
+        Ports, how the server is configured (a config file, command line arguments), whether it has a
+        console, how it saves the world, whether it needs a licence or a Steam account.
+
+  - type: checkboxes
+    id: testing
+    attributes:
+      label: Testing
+      options:
+        - label: I can test a template for this game and report back.

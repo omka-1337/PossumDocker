@@ -1,0 +1,130 @@
+name: Bug report
+description: Something in the panel, the agent or a game server doesn't work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. Fill in what you can — a report with the
+        version and the logs is usually enough to find the problem.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before reporting
+      options:
+        - label: I searched the existing issues and didn't find this one.
+          required: true
+        - label: >
+            This is not a security problem. Those go to the
+            [Security tab](https://github.com/omka-1337/possum/security/advisories/new) instead,
+            not into a public issue.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the panel did instead of what you expected.
+      placeholder: |
+        I pressed "start" on a Minecraft server. The status went to "crashed" after a few seconds,
+        with "container exited with code 1" under it. I expected it to start.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Everything needed to see it happen on another machine.
+      placeholder: |
+        1. Create a Minecraft: Java Edition server, version 1.21.1, 2 GB of memory.
+        2. Wait for the install to finish.
+        3. Press "start".
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it happens
+      options:
+        - The panel's interface
+        - Creating or installing a server
+        - Starting, stopping or crashes
+        - Console
+        - Files
+        - Backups or restore
+        - Schedules
+        - Players, kicks or bans
+        - Users and permissions
+        - The ./possum script or installing the panel
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: game
+    attributes:
+      label: Game
+      description: Which game's server this is about.
+      options:
+        - Not about a particular game
+        - "Minecraft: Java Edition"
+        - "Minecraft: Bedrock Edition"
+        - Counter-Strike 1.6
+        - Valheim
+        - Factorio
+        - My own template in data/templates
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: possum version
+      description: >
+        `git describe --tags` in the possum folder. If it isn't a release, say which branch and
+        commit (`git rev-parse --short HEAD`).
+      placeholder: v0.1.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - "./possum start from a git clone"
+        - docker compose with deploy/docker-compose.yml
+        - Images built myself
+        - Some other way
+    validations:
+      required: true
+
+  - type: input
+    id: host
+    attributes:
+      label: System and Docker
+      description: >
+        Output of `uname -sr` and `docker version --format '{{.Server.Version}}'`.
+      placeholder: Linux 6.10.6-arch1-1, Docker 27.2.0
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Only for problems with the panel's interface.
+      placeholder: Firefox 130
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        `./possum logs` for the panel, `docker compose logs agent` for the agent, and the install log
+        from the server's page when an install failed. Remove POSSUM_AGENT_TOKEN, passwords and
+        anything else you don't want public — the logs may contain players' addresses.
+      render: shell

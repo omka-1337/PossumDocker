@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest something the panel should be able to do
+labels: ["enhancement"]
+body:
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before asking
+      options:
+        - label: I searched the existing issues and didn't find this one.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem
+      description: What you were trying to do, and what got in the way. Not the solution yet.
+      placeholder: >
+        I run four servers for a small community and can't tell at a glance which of them is eating
+        the machine's memory.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you'd like
+      description: How you imagine it working in the panel.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you do instead today
+      description: Any workaround you use now, or how another panel solves it.
+
+  - type: dropdown
+    id: self-hosted
+    attributes:
+      label: How you run possum
+      options:
+        - For myself or a few friends
+        - For a community
+        - For customers (hosting)
+    validations:
+      required: true

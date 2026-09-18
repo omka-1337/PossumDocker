@@ -1,15 +1,7 @@
-import {
-  IconArrowLeft,
-  IconCopy,
-  IconPlayerPlay,
-  IconPlayerStop,
-  IconRefresh,
-  IconTrash,
-} from '@tabler/icons-react'
+import { IconArrowLeft, IconCopy, IconPlayerPlay, IconPlayerStop, IconRefresh } from '@tabler/icons-react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import {
-  useDeleteServer,
   useInstallLog,
   useServer,
   useServerAction,
@@ -21,12 +13,13 @@ import { useMe, useServerPermissions, type Permission } from '../api/auth'
 import type { Server } from '../api/types'
 import { AccessTab } from '../components/AccessTab'
 import { BackupsTab } from '../components/BackupsTab'
+import { DeleteServer } from '../components/DeleteServer'
 import { FileBrowser } from '../components/files/FileBrowser'
 import { PlayersTab } from '../components/PlayersTab'
 import { GameIcon } from '../components/GameIcon'
 import { SchedulesTab } from '../components/SchedulesTab'
 import { SettingsTab } from '../components/SettingsTab'
-import { Button, Modal, StatusBadge, Tabs } from '../components/ui'
+import { Button, StatusBadge, Tabs } from '../components/ui'
 import { stripAnsi } from '../lib/ansi'
 
 // xterm.js is big: load it only when a console is actually shown.
@@ -86,7 +79,12 @@ function ServerView({ server }: { server: Server }) {
         server.status !== 'pending' && <InstalledTabs server={server} permissions={permissions} isAdmin={isAdmin} />
       )}
 
-      {isAdmin && <DangerZone server={server} />}
+      {/* Deleting lives on the settings tab; a server that never got one is deleted from here. */}
+      {isAdmin && (installing || server.status === 'pending') && (
+        <div className="mt-10 flex justify-end border-t border-line-soft pt-6">
+          <DeleteServer server={server} />
+        </div>
+      )}
     </div>
   )
 }
@@ -236,43 +234,6 @@ function InstallLog({ serverId, live }: { serverId: string; live: boolean }) {
       >
         {lines.length ? lines.map(stripAnsi).join('\n') : live ? 'waiting for output…' : 'no log for this install'}
       </pre>
-    </div>
-  )
-}
-
-function DangerZone({ server }: { server: Server }) {
-  const [confirming, setConfirming] = useState(false)
-  const deleteServer = useDeleteServer()
-  const navigate = useNavigate()
-
-  return (
-    <div className="mt-10 flex justify-end border-t border-line-soft pt-6">
-      <Button variant="danger" onClick={() => setConfirming(true)}>
-        <IconTrash size={16} /> delete server
-      </Button>
-
-      {confirming && (
-        <Modal title="delete server?" onClose={() => setConfirming(false)}>
-          <p className="mb-5 text-sm text-muted">
-            <span className="text-zinc-100">{server.name}</span> will be stopped and removed together with all its
-            files and worlds. this can't be undone.
-          </p>
-          {deleteServer.error && <p className="mb-3 text-sm text-red-400">{deleteServer.error.message}</p>}
-          <div className="flex gap-2">
-            <Button className="flex-1" onClick={() => setConfirming(false)}>
-              cancel
-            </Button>
-            <Button
-              variant="danger"
-              className="flex-1"
-              disabled={deleteServer.isPending}
-              onClick={() => deleteServer.mutate(server.id, { onSuccess: () => navigate('/') })}
-            >
-              {deleteServer.isPending ? 'deleting…' : 'delete'}
-            </Button>
-          </div>
-        </Modal>
-      )}
     </div>
   )
 }

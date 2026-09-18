@@ -60,7 +60,7 @@ function ServerView({ server }: { server: Server }) {
   const installing = server.status === 'installing' || server.status === 'install_failed'
 
   return (
-    <div className="w-full px-2 py-3">
+    <div className="w-full px-3 py-3">
       <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted hover:text-zinc-200">
         <IconArrowLeft size={16} /> servers
       </Link>
@@ -246,7 +246,7 @@ function DangerZone({ server }: { server: Server }) {
   const navigate = useNavigate()
 
   return (
-    <div className="mt-10 border-t border-line-soft pt-6">
+    <div className="mt-10 flex justify-end border-t border-line-soft pt-6">
       <Button variant="danger" onClick={() => setConfirming(true)}>
         <IconTrash size={16} /> delete server
       </Button>

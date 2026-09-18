@@ -1,12 +1,12 @@
-import { IconChevronRight, IconChevronUp, IconLayoutGrid, IconList, IconPlus } from '@tabler/icons-react'
+import { IconChevronRight, IconChevronUp, IconPlus } from '@tabler/icons-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useMe } from '../api/auth'
 import { useServers, useServerStats, useTemplates } from '../api/queries'
 import type { Server, ServerStats, ServerStatus } from '../api/types'
 import { CreateServerDialog } from '../components/CreateServerDialog'
-import { GameCover, GameIcon } from '../components/GameIcon'
-import { Button, IconButton, StatusBadge } from '../components/ui'
+import { GameIcon } from '../components/GameIcon'
+import { Button, StatusBadge } from '../components/ui'
 import { formatSize } from '../lib/format'
 import { useStoredState } from '../lib/storage'
 
@@ -25,7 +25,7 @@ const STATUS_ORDER: Record<ServerStatus, number> = {
   unknown: 4,
 }
 
-type SortKey = 'name' | 'type' | 'status' | 'id' | 'size' | 'load'
+type SortKey = 'name' | 'type' | 'status' | 'port' | 'id' | 'size' | 'load'
 type Sort = { key: SortKey; desc: boolean }
 
 /** What a column sorts by; numbers compare as numbers, and a server with no numbers yet goes last. */
@@ -37,6 +37,8 @@ function sortValue(key: SortKey, server: Server, game: string, stats?: ServerSta
       return game.toLowerCase()
     case 'status':
       return STATUS_ORDER[server.status]
+    case 'port':
+      return Object.values(server.ports)[0] ?? -1
     case 'id':
       return server.id
     case 'size':
@@ -53,12 +55,10 @@ export function ServersPage() {
   const { data: templates } = useTemplates()
   const isAdmin = me?.is_admin ?? false
   const navigate = useNavigate()
-  const [view, setView] = useStoredState<'list' | 'tiles'>('possum.servers.view', 'list')
   // null: the default order below. A column sorts one way, then the other, then back to it.
   const [sort, setSort] = useStoredState<Sort | null>('possum.servers.sort', null)
   const hasServers = (all?.length ?? 0) > 0
-  // Only the list shows what each server uses.
-  const { data: stats } = useServerStats(hasServers && view === 'list')
+  const { data: stats } = useServerStats(hasServers)
   const statsOf = (id: string) => stats?.find((s) => s.id === id)
 
   const servers = useMemo(() => {
@@ -83,7 +83,7 @@ export function ServersPage() {
     setSort(sort?.key !== key ? { key, desc: false } : sort.desc ? null : { key, desc: true })
 
   return (
-    <div className="flex min-h-full flex-col px-2 py-3">
+    <div className="flex min-h-full flex-col px-3 py-3">
       <div className="mb-3 flex items-center gap-2">
         {/* Only administrators create servers. */}
         {isAdmin && (
@@ -96,16 +96,6 @@ export function ServersPage() {
             </span>
             new server
           </button>
-        )}
-        <div className="flex-1" />
-        {hasServers && (
-          <IconButton
-            onClick={() => setView(view === 'list' ? 'tiles' : 'list')}
-            aria-label="switch view"
-            title={view === 'list' ? 'tiles' : 'list'}
-          >
-            {view === 'list' ? <IconLayoutGrid size={18} /> : <IconList size={18} />}
-          </IconButton>
         )}
       </div>
 
@@ -141,12 +131,6 @@ export function ServersPage() {
             </>
           )}
         </Centered>
-      ) : view === 'tiles' ? (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(14rem,1fr))] gap-2">
-          {servers.map((server) => (
-            <ServerTile key={server.id} server={server} />
-          ))}
-        </ul>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
@@ -155,6 +139,13 @@ export function ServersPage() {
                 <SortHeader column="name" label="name" sort={sort} onSort={toggleSort} />
                 <SortHeader column="type" label="type" sort={sort} onSort={toggleSort} />
                 <SortHeader column="status" label="status" sort={sort} onSort={toggleSort} />
+                <SortHeader
+                  column="port"
+                  label="port"
+                  sort={sort}
+                  onSort={toggleSort}
+                  className="hidden sm:table-cell"
+                />
                 <SortHeader column="id" label="id" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />
                 <SortHeader
                   column="size"
@@ -232,7 +223,7 @@ function Centered({ children }: { children: ReactNode }) {
   return <div className="flex flex-1 flex-col items-center justify-center pb-16 text-center">{children}</div>
 }
 
-/** The game a server runs, for its row or tile. */
+/** The game a server runs, for its row. */
 function useGame(server: Server) {
   const { data: templates } = useTemplates()
   const template = templates?.find((t) => t.id === server.template_id)
@@ -242,6 +233,10 @@ function useGame(server: Server) {
 function ServerRow({ server, stats }: { server: Server; stats?: ServerStats }) {
   const { template, game } = useGame(server)
   const navigate = useNavigate()
+  // The first port is the one players use; the rest (rcon, query) are only counted here.
+  const ports = Object.entries(server.ports)
+  const [, port] = ports[0] ?? []
+  const extra = ports.length - 1
   // A running server reports what it uses; a stopped one only its size.
   const load =
     stats?.cpus != null && stats.memory_bytes != null
@@ -271,6 +266,13 @@ function ServerRow({ server, stats }: { server: Server; stats?: ServerStats }) {
       <td className="px-3 py-2">
         <StatusBadge status={server.status} />
       </td>
+      <td
+        className="hidden px-3 py-2 text-muted tabular-nums sm:table-cell"
+        title={ports.map(([name, value]) => `${name} ${value}`).join(' · ')}
+      >
+        {port ?? '—'}
+        {extra > 0 && <span className="ml-1 text-xs">+{extra}</span>}
+      </td>
       <td className="hidden px-3 py-2 font-mono text-xs text-muted lg:table-cell" title={server.id}>
         {server.id.slice(0, 8)}
       </td>
@@ -282,27 +284,5 @@ function ServerRow({ server, stats }: { server: Server; stats?: ServerStats }) {
         <IconChevronRight size={18} className="text-muted transition group-hover:translate-x-0.5" />
       </td>
     </tr>
-  )
-}
-
-function ServerTile({ server }: { server: Server }) {
-  const { template, game } = useGame(server)
-
-  return (
-    <li>
-      <Link
-        to={`/servers/${server.id}`}
-        className="group block overflow-hidden rounded-2xl bg-panel transition hover:bg-raised"
-      >
-        {template ? <GameCover template={template} /> : <div className="aspect-[460/215] w-full bg-page" />}
-        <div className="flex items-center gap-2 p-3">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{server.name}</div>
-            <div className="truncate text-xs text-muted lowercase">{game}</div>
-          </div>
-          <StatusBadge status={server.status} />
-        </div>
-      </Link>
-    </li>
   )
 }

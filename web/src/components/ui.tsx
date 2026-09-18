@@ -116,20 +116,23 @@ export function Tabs<T extends string>({
   onChange: (value: T) => void
 }) {
   return (
-    <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto">
-      {tabs.map((tab) => (
-        <button
-          key={tab.value}
-          role="tab"
-          aria-selected={tab.value === value}
-          onClick={() => onChange(tab.value)}
-          className={`shrink-0 rounded-xl px-3 py-2 text-sm lowercase transition ${
-            tab.value === value ? 'bg-active text-on-active' : 'text-zinc-300 hover:bg-panel'
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
+    // Centered, and still scrollable from the first tab when they don't all fit.
+    <div className="mb-4 overflow-x-auto">
+      <div role="tablist" className="mx-auto flex w-max gap-1">
+        {tabs.map((tab) => (
+          <button
+            key={tab.value}
+            role="tab"
+            aria-selected={tab.value === value}
+            onClick={() => onChange(tab.value)}
+            className={`shrink-0 rounded-xl px-3 py-2 text-sm lowercase transition ${
+              tab.value === value ? 'bg-active text-on-active' : 'text-zinc-300 hover:bg-panel'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

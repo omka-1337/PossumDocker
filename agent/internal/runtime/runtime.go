@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/omka-1337/possum/agent/internal/engine"
@@ -134,6 +135,15 @@ func hostLimits(spec ContainerSpec) map[string]any {
 	return limits
 }
 
+// Stats is what a running server is using right now.
+type Stats struct {
+	// Share of one CPU core: 1.5 means one and a half cores.
+	CPUs float64 `json:"cpus"`
+	// Memory the game actually uses (without the page cache), and what it may use.
+	MemoryBytes int64 `json:"memory_bytes"`
+	MemoryLimit int64 `json:"memory_limit"`
+}
+
 // Dirs creates folders inside a server's volume. Implemented by the files helper.
 type Dirs interface {
 	EnsureDirs(ctx context.Context, serverID string, paths []string) error
@@ -208,6 +218,57 @@ func (r *Runtime) State(ctx context.Context, serverID string) (*State, error) {
 		state.OOMKilled = info.State.OOMKilled
 	}
 	return state, nil
+}
+
+// Stats of every running game server, keyed by server id. Docker needs a moment per container,
+// so they are asked for at the same time.
+func (r *Runtime) Stats(ctx context.Context) (map[string]Stats, error) {
+	containers, err := r.docker.ContainerList(ctx, LabelManaged+"=true", LabelRole+"=runtime")
+	if err != nil {
+		return nil, err
+	}
+	stats := make(map[string]Stats, len(containers))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for _, c := range containers {
+		id := c.Labels[LabelServer]
+		if id == "" || c.State != "running" {
+			continue
+		}
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			raw, err := r.docker.ContainerStats(ctx, ContainerName(id))
+			if err != nil {
+				r.log.Debug("stats of a server failed", "server", id, "err", err)
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			stats[id] = statsOf(raw)
+		}(id)
+	}
+	wg.Wait()
+	return stats, nil
+}
+
+// statsOf turns Docker's counters into what the panel shows: CPU cores in use since the previous
+// sample, and memory without the page cache (which the kernel frees when something needs it).
+func statsOf(raw *engine.ContainerStatsRaw) Stats {
+	stats := Stats{MemoryBytes: raw.MemoryStats.Usage, MemoryLimit: raw.MemoryStats.Limit}
+	if cache, ok := raw.MemoryStats.Stats["inactive_file"]; ok && cache < stats.MemoryBytes {
+		stats.MemoryBytes -= cache
+	}
+	cpuDelta := raw.CPUStats.CPUUsage.TotalUsage - raw.PreCPUStats.CPUUsage.TotalUsage
+	systemDelta := raw.CPUStats.SystemUsage - raw.PreCPUStats.SystemUsage
+	if cpuDelta > 0 && systemDelta > 0 {
+		cores := raw.CPUStats.OnlineCPUs
+		if cores == 0 {
+			cores = 1
+		}
+		stats.CPUs = float64(cpuDelta) / float64(systemDelta) * float64(cores)
+	}
+	return stats
 }
 
 // PublishedPorts are host ports any container publishes, "25565/tcp" style pairs.

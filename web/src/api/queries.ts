@@ -13,6 +13,7 @@ import {
   type Option,
   type Server,
   type ServerCreate,
+  type ServerStats,
   type ServerUpdateResult,
   type TemplateDetail,
   type TemplateSummary,
@@ -84,6 +85,16 @@ const RUNNING_POLL_MS = 10_000
 function pollInterval(statuses: ServerStatus[]) {
   if (statuses.some((s) => TRANSITIONAL.includes(s))) return POLL_MS
   return statuses.includes('running') ? RUNNING_POLL_MS : false
+}
+
+/** CPU, memory and size of every visible server, for the list. */
+export function useServerStats(enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.servers, 'stats'] as const,
+    queryFn: () => api<ServerStats[]>('/servers/stats'),
+    enabled,
+    refetchInterval: 5000,
+  })
 }
 
 export function useServer(id: string) {

@@ -18,6 +18,17 @@ class RuntimeUnavailable(Exception):
 
 
 @dataclass(frozen=True)
+class ContainerStats:
+    """What a running server uses right now."""
+
+    # Share of one CPU core: 1.5 means one and a half cores.
+    cpus: float
+    # Memory the game itself uses (without the page cache) and what it may use.
+    memory_bytes: int
+    memory_limit: int
+
+
+@dataclass(frozen=True)
 class ContainerState:
     status: Literal["created", "running", "paused", "restarting", "removing", "exited", "dead"]
     # "starting" | "healthy" | "unhealthy" when the image has a healthcheck, else None.

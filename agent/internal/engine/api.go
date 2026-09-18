@@ -52,6 +52,39 @@ func (c *Client) ContainerList(ctx context.Context, labels ...string) ([]Contain
 	return out, c.call(ctx, http.MethodGet, "/containers/json", query, nil, &out)
 }
 
+// ContainerStatsRaw is the part of Docker's one-shot stats the panel shows.
+type ContainerStatsRaw struct {
+	CPUStats struct {
+		CPUUsage struct {
+			TotalUsage int64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemUsage int64 `json:"system_cpu_usage"`
+		OnlineCPUs  int   `json:"online_cpus"`
+	} `json:"cpu_stats"`
+	PreCPUStats struct {
+		CPUUsage struct {
+			TotalUsage int64 `json:"total_usage"`
+		} `json:"cpu_usage"`
+		SystemUsage int64 `json:"system_cpu_usage"`
+	} `json:"precpu_stats"`
+	MemoryStats struct {
+		Usage int64            `json:"usage"`
+		Limit int64            `json:"limit"`
+		Stats map[string]int64 `json:"stats"`
+	} `json:"memory_stats"`
+}
+
+// ContainerStats reads one snapshot of a container's CPU and memory use.
+func (c *Client) ContainerStats(ctx context.Context, name string) (*ContainerStatsRaw, error) {
+	var out ContainerStatsRaw
+	query := url.Values{"stream": {"false"}, "one-shot": {"false"}}
+	err := c.call(ctx, http.MethodGet, "/containers/"+url.PathEscape(name)+"/stats", query, nil, &out)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) ContainerInspect(ctx context.Context, name string) (*ContainerInfo, error) {
 	var out ContainerInfo
 	if err := c.call(ctx, http.MethodGet, "/containers/"+url.PathEscape(name)+"/json", nil, nil, &out); err != nil {

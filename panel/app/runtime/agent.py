@@ -19,7 +19,7 @@ import httpx
 
 from app.runtime.files import FileEntry, FileError, SearchMatch, Upload, resolve, validate_name
 from app.runtime.spec import ContainerSpec
-from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable, parse_docker_time
+from app.runtime.state import ContainerState, ContainerStats, LogFn, RuntimeUnavailable, parse_docker_time
 
 
 class AgentError(RuntimeUnavailable):
@@ -130,6 +130,17 @@ class AgentRuntime:
                 return None
             raise
         return _state(data)
+
+    async def stats(self) -> dict[str, ContainerStats]:
+        data = (await self._call("GET", "/v1/stats")).json()
+        return {
+            sid: ContainerStats(
+                cpus=s.get("cpus", 0.0),
+                memory_bytes=s.get("memory_bytes", 0),
+                memory_limit=s.get("memory_limit", 0),
+            )
+            for sid, s in data.items()
+        }
 
     async def published_ports(self) -> set[tuple[int, str]]:
         return {(port, proto) for port, proto in (await self._call("GET", "/v1/ports")).json()}

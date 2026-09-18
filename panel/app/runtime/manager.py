@@ -19,7 +19,7 @@ from app.games.schema import ConfigFile, Template
 from app.models import Backup, BackupStatus, Server, ServerState
 from app.runtime.files import Files
 from app.runtime.spec import ContainerSpec, build_spec, storage_limits
-from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable
+from app.runtime.state import RUNTIME_ERRORS, ContainerState, ContainerStats, LogFn, RuntimeUnavailable
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class Runtime(Protocol):
     """What the manager needs from Docker. Tests pass a fake; later the Go agent client."""
 
     async def states(self) -> dict[str, ContainerState]: ...
+    async def stats(self) -> dict[str, ContainerStats]: ...
     async def state(self, server_id: str) -> ContainerState | None: ...
     async def pull(self, image: str, on_log: LogFn) -> None: ...
     async def ensure_volume(self, server_id: str) -> str: ...
@@ -131,6 +132,8 @@ class ServerManager:
         self.players = PlayerService(self)
         # Servers stopped for going over their disk limit, and why; shown until the next start.
         self.disk_errors: dict[str, str] = {}
+        # Bytes each server's files take, measured every few minutes: the list shows them without waiting.
+        self.disk_usage: dict[str, int] = {}
 
     # --- startup / shutdown --------------------------------------------------
 
@@ -213,15 +216,17 @@ class ServerManager:
         disk, backups = storage_limits(template, server)
         return (disk * MB if disk else None), (backups * MB if backups else None)
 
-    async def disk_usage(self, server: Server) -> int:
-        return await self.runtime.files.usage(server.id, [])
+    async def disk_usage_of(self, server: Server) -> int:
+        used = await self.runtime.files.usage(server.id, [])
+        self.disk_usage[server.id] = used
+        return used
 
     async def require_space(self, server: Server, adding: int) -> None:
         """Refuse a write of `adding` bytes that would take the server over its disk limit."""
         limit, _ = self.limits_of(server)
         if limit is None:
             return
-        used = await self.disk_usage(server)
+        used = await self.disk_usage_of(server)
         if used + adding > limit:
             left = format_size(limit - used)
             raise StorageFull(
@@ -233,7 +238,7 @@ class ServerManager:
         limit, _ = self.limits_of(server)
         if limit is None:
             return None
-        used = await self.disk_usage(server)
+        used = await self.disk_usage_of(server)
         if used <= limit:
             return None
         used_text = f"{format_size(used)} of {format_size(limit)}"
@@ -241,13 +246,26 @@ class ServerManager:
 
     async def _watch_disks(self) -> None:
         while True:
-            await asyncio.sleep(DISK_CHECK_SECONDS)
             try:
+                await self.measure_disks()
                 await self.stop_servers_over_disk_limit()
             except asyncio.CancelledError:
                 raise
             except Exception:
                 log.exception("checking disk usage failed")
+            await asyncio.sleep(DISK_CHECK_SECONDS)
+
+    async def measure_disks(self) -> None:
+        """Keep a rough size for every server, so the list doesn't have to measure while you look at it."""
+        async with self._sessionmaker() as session:
+            servers = list(await session.scalars(select(Server).where(Server.state == ServerState.INSTALLED)))
+        for server in servers:
+            try:
+                self.disk_usage[server.id] = await self.disk_usage_of(server)
+            except (ServerBusy, *RUNTIME_ERRORS) as exc:
+                log.debug("measuring %s failed: %s", server.id, exc)
+        for server_id in self.disk_usage.keys() - {s.id for s in servers}:
+            del self.disk_usage[server_id]
 
     async def stop_servers_over_disk_limit(self) -> None:
         """What a game writes itself (worlds, logs, plugins) isn't checked on the way: catch it here."""

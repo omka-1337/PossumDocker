@@ -19,7 +19,7 @@ import aiohttp
 from aiodocker.exceptions import DockerError
 
 from app.runtime.spec import ContainerSpec
-from app.runtime.state import ContainerState, LogFn, RuntimeUnavailable, parse_docker_time
+from app.runtime.state import ContainerState, ContainerStats, LogFn, RuntimeUnavailable, parse_docker_time
 
 __all__ = ["ContainerState", "DockerRuntime", "LogFn", "RuntimeUnavailable", "host_limits"]
 
@@ -74,6 +74,25 @@ def _labels(server_id: str, role: str) -> dict[str, str]:
     return {LABEL_MANAGED: "true", LABEL_SERVER: server_id, LABEL_ROLE: role}
 
 
+def _stats_of(sample: dict) -> ContainerStats:
+    """Docker's counters as the panel shows them: cores in use since the previous sample, and
+    memory without the page cache (which the kernel frees when something needs it)."""
+    memory = sample.get("memory_stats", {})
+    used = memory.get("usage", 0)
+    cache = memory.get("stats", {}).get("inactive_file", 0)
+    cpu, precpu = sample.get("cpu_stats", {}), sample.get("precpu_stats", {})
+    cpu_delta = cpu.get("cpu_usage", {}).get("total_usage", 0) - precpu.get("cpu_usage", {}).get(
+        "total_usage", 0
+    )
+    system_delta = cpu.get("system_cpu_usage", 0) - precpu.get("system_cpu_usage", 0)
+    cores = cpu.get("online_cpus") or 1
+    return ContainerStats(
+        cpus=(cpu_delta / system_delta * cores) if cpu_delta > 0 and system_delta > 0 else 0.0,
+        memory_bytes=used - cache if cache < used else used,
+        memory_limit=memory.get("limit", 0),
+    )
+
+
 def _exit_code_from_status(status_text: str) -> int | None:
     # `docker ps` status text: "Exited (137) 2 minutes ago"
     match = re.match(r"Exited \((-?\d+)\)", status_text)
@@ -118,6 +137,27 @@ class DockerRuntime:
                     exit_code=_exit_code_from_status(text),
                 )
         return states
+
+    async def stats(self) -> dict[str, ContainerStats]:
+        """CPU and memory of every running server. Docker takes a moment each: all at once."""
+        filters = json.dumps(
+            {"label": [f"{LABEL_MANAGED}=true", f"{LABEL_ROLE}=runtime"], "status": ["running"]}
+        )
+        try:
+            containers = await self._docker.containers.list(filters=filters)
+        except (DockerError, aiohttp.ClientError, OSError) as exc:
+            raise RuntimeUnavailable(str(exc)) from exc
+
+        async def one(container) -> tuple[str, ContainerStats] | None:
+            server_id = container._container.get("Labels", {}).get(LABEL_SERVER)
+            try:
+                samples = await container.stats(stream=False)
+            except (DockerError, aiohttp.ClientError, OSError):
+                return None
+            return (server_id, _stats_of(samples[-1])) if server_id and samples else None
+
+        measured = await asyncio.gather(*(one(c) for c in containers))
+        return dict(m for m in measured if m)
 
     async def published_ports(self) -> set[tuple[int, str]]:
         """Host ports any container publishes. Inside a container the panel can't probe host ports itself."""

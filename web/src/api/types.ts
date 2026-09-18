@@ -156,6 +156,17 @@ export interface Server {
   created_at: string
 }
 
+/** What a server uses right now; the list shows it as one row per server. */
+export interface ServerStats {
+  id: string
+  // Running servers only: share of one CPU core (0.5 = half a core)
+  cpus: number | null
+  memory_bytes: number | null
+  memory_limit: number | null
+  // Size of the server's files, measured every few minutes
+  disk_used: number | null
+}
+
 export interface ServerUpdate {
   name?: string
   values?: FieldValues

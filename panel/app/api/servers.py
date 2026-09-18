@@ -191,6 +191,41 @@ async def _taken_ports(
     return taken
 
 
+class ServerStats(BaseModel):
+    id: str
+    # Running servers only: share of one CPU core, memory in use and what it may use.
+    cpus: float | None
+    memory_bytes: int | None
+    memory_limit: int | None
+    # What the server's files take, measured every few minutes; None until first measured.
+    disk_used: int | None
+
+
+@router.get("/stats")
+async def list_stats(
+    session: Session, templates: Templates, manager: Manager, user: CurrentUser
+) -> list[ServerStats]:
+    """CPU, memory and size of the servers this user can see, for the list."""
+    query = select(Server.id)
+    if (visible := await visible_server_ids(session, user)) is not None:
+        query = query.where(Server.id.in_(visible))
+    ids = list(await session.scalars(query))
+    try:
+        stats = await manager.runtime.stats()
+    except RUNTIME_ERRORS:
+        stats = {}
+    return [
+        ServerStats(
+            id=server_id,
+            cpus=stats[server_id].cpus if server_id in stats else None,
+            memory_bytes=stats[server_id].memory_bytes if server_id in stats else None,
+            memory_limit=stats[server_id].memory_limit if server_id in stats else None,
+            disk_used=manager.disk_usage.get(server_id),
+        )
+        for server_id in ids
+    ]
+
+
 @router.post("", status_code=status.HTTP_201_CREATED, dependencies=[AdminOnly])
 async def create_server(
     body: ServerCreate, session: Session, templates: Templates, providers: Providers, manager: Manager
@@ -330,7 +365,7 @@ async def get_storage(server_id: str, session: Session, manager: Manager) -> Sto
     disk_used = None
     if server.state == ServerState.INSTALLED:
         try:
-            disk_used = await manager.disk_usage(server)
+            disk_used = await manager.disk_usage_of(server)
         except (FileError, *RUNTIME_ERRORS) as exc:
             raise HTTPException(503, f"could not measure the server: {exc}") from exc
     return StorageRead(

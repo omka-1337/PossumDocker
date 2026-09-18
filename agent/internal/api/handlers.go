@@ -19,6 +19,15 @@ func (s *Server) states(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, states)
 }
 
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	stats, err := s.runtime.Stats(r.Context())
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	writeJSON(w, stats)
+}
+
 func (s *Server) publishedPorts(w http.ResponseWriter, r *http.Request) {
 	ports, err := s.runtime.PublishedPorts(r.Context())
 	if err != nil {

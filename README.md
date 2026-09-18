@@ -137,6 +137,10 @@ npm run lint
 
 If the panel is not on `localhost:8080`, set `POSSUM_PANEL_URL=http://host:port`.
 
+## Disclaimer
+
+The project was created with significant help from an AI assistant (Claude Code). However, the concept itself, as well as the entire design and functionality were conceived and tested by me.
+
 ## License
 
 [AGPL-3.0](LICENSE)

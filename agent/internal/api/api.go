@@ -41,6 +41,7 @@ func (s *Server) Handler() http.Handler {
 	// Runtime: containers and their lifecycle.
 	api.HandleFunc("GET /v1/servers", s.states)
 	api.HandleFunc("GET /v1/ports", s.publishedPorts)
+	api.HandleFunc("GET /v1/stats", s.stats)
 	api.HandleFunc("POST /v1/images/pull", s.pull)
 	api.HandleFunc("GET /v1/servers/{id}", s.state)
 	api.HandleFunc("DELETE /v1/servers/{id}", s.remove)

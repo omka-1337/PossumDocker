@@ -11,6 +11,7 @@ from app.games.schema import Option
 from app.main import create_app
 from app.runtime.docker import ContainerState, LogFn
 from app.runtime.spec import ContainerSpec
+from app.runtime.state import ContainerStats
 from tests.local_files import LocalFiles
 
 
@@ -39,6 +40,15 @@ class FakeRuntime:
 
     async def states(self):
         return dict(self.containers)
+
+    async def stats(self):
+        return {
+            server_id: ContainerStats(
+                cpus=0.5, memory_bytes=512 * 1024 * 1024, memory_limit=1024 * 1024 * 1024
+            )
+            for server_id, state in self.containers.items()
+            if state.status == "running"
+        }
 
     async def state(self, server_id):
         return self.containers.get(server_id)

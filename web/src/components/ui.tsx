@@ -176,7 +176,7 @@ const statusDot: Record<ServerStatus, string> = {
 
 export function StatusBadge({ status }: { status: ServerStatus }) {
   return (
-    <span className="flex items-center gap-2 rounded-full bg-raised px-2.5 py-1 text-xs text-zinc-300">
+    <span className="inline-flex items-center gap-2 rounded-full bg-raised px-2.5 py-1 text-xs text-zinc-300">
       <span className={`size-1.5 rounded-full ${statusDot[status]}`} />
       {status.replace('_', ' ')}
     </span>

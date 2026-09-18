@@ -60,7 +60,7 @@ function ServerView({ server }: { server: Server }) {
   const installing = server.status === 'installing' || server.status === 'install_failed'
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-5">
+    <div className="w-full px-2 py-3">
       <Link to="/" className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted hover:text-zinc-200">
         <IconArrowLeft size={16} /> servers
       </Link>

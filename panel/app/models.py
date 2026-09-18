@@ -196,6 +196,8 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # Optional, stored lowercase: a way to reach the person behind the account.
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, index=True, default=None)
     password_hash: Mapped[str] = mapped_column(String(255))
     # Admins see and do everything, including creating servers and managing users.
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)

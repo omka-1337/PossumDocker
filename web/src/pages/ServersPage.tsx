@@ -1,4 +1,4 @@
-import { IconChevronRight, IconLayoutGrid, IconList, IconPlus } from '@tabler/icons-react'
+import { IconChevronRight, IconChevronUp, IconLayoutGrid, IconList, IconPlus } from '@tabler/icons-react'
 import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useMe } from '../api/auth'
@@ -25,21 +25,62 @@ const STATUS_ORDER: Record<ServerStatus, number> = {
   unknown: 4,
 }
 
+type SortKey = 'name' | 'type' | 'status' | 'id' | 'size' | 'load'
+type Sort = { key: SortKey; desc: boolean }
+
+/** What a column sorts by; numbers compare as numbers, and a server with no numbers yet goes last. */
+function sortValue(key: SortKey, server: Server, game: string, stats?: ServerStats): string | number {
+  switch (key) {
+    case 'name':
+      return server.name.toLowerCase()
+    case 'type':
+      return game.toLowerCase()
+    case 'status':
+      return STATUS_ORDER[server.status]
+    case 'id':
+      return server.id
+    case 'size':
+      return stats?.disk_used ?? -1
+    case 'load':
+      return stats?.cpus ?? -1
+  }
+}
+
 export function ServersPage() {
   const [creating, setCreating] = useState(false)
   const { data: all, isPending, isError } = useServers()
-  const servers = useMemo(
-    () => (all ?? []).toSorted((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]),
-    [all],
-  )
   const { data: me } = useMe()
+  const { data: templates } = useTemplates()
   const isAdmin = me?.is_admin ?? false
   const navigate = useNavigate()
   const [view, setView] = useStoredState<'list' | 'tiles'>('possum.servers.view', 'list')
-  const hasServers = servers.length > 0
+  // null: the default order below. A column sorts one way, then the other, then back to it.
+  const [sort, setSort] = useStoredState<Sort | null>('possum.servers.sort', null)
+  const hasServers = (all?.length ?? 0) > 0
   // Only the list shows what each server uses.
   const { data: stats } = useServerStats(hasServers && view === 'list')
   const statsOf = (id: string) => stats?.find((s) => s.id === id)
+
+  const servers = useMemo(() => {
+    const list = all ?? []
+    if (!sort) return list.toSorted((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+    const gameOf = (server: Server) =>
+      templates?.find((t) => t.id === server.template_id)?.name ?? server.template_id
+    const statsFor = (id: string) => stats?.find((entry) => entry.id === id)
+    return list.toSorted((a, b) => {
+      const left = sortValue(sort.key, a, gameOf(a), statsFor(a.id))
+      const right = sortValue(sort.key, b, gameOf(b), statsFor(b.id))
+      const order =
+        typeof left === 'string' && typeof right === 'string'
+          ? left.localeCompare(right)
+          : Number(left) - Number(right)
+      // Same value: keep it readable by name instead of leaving it to chance.
+      return (sort.desc ? -order : order) || a.name.localeCompare(b.name)
+    })
+  }, [all, sort, stats, templates])
+
+  const toggleSort = (key: SortKey) =>
+    setSort(sort?.key !== key ? { key, desc: false } : sort.desc ? null : { key, desc: true })
 
   return (
     <div className="flex min-h-full flex-col px-2 py-3">
@@ -111,12 +152,24 @@ export function ServersPage() {
           <table className="w-full border-collapse text-sm">
             <thead className="text-left text-xs text-muted">
               <tr>
-                <th className="px-3 py-2 font-medium">name</th>
-                <th className="px-3 py-2 font-medium">type</th>
-                <th className="px-3 py-2 font-medium">status</th>
-                <th className="hidden px-3 py-2 font-medium lg:table-cell">id</th>
-                <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">size</th>
-                <th className="hidden px-3 py-2 text-right font-medium md:table-cell">cpu / ram</th>
+                <SortHeader column="name" label="name" sort={sort} onSort={toggleSort} />
+                <SortHeader column="type" label="type" sort={sort} onSort={toggleSort} />
+                <SortHeader column="status" label="status" sort={sort} onSort={toggleSort} />
+                <SortHeader column="id" label="id" sort={sort} onSort={toggleSort} className="hidden lg:table-cell" />
+                <SortHeader
+                  column="size"
+                  label="size"
+                  sort={sort}
+                  onSort={toggleSort}
+                  className="hidden text-right sm:table-cell"
+                />
+                <SortHeader
+                  column="load"
+                  label="cpu / ram"
+                  sort={sort}
+                  onSort={toggleSort}
+                  className="hidden text-right md:table-cell"
+                />
                 <th className="w-8" />
               </tr>
             </thead>
@@ -137,6 +190,41 @@ export function ServersPage() {
         />
       )}
     </div>
+  )
+}
+
+/** A column header that sorts the list by its column. */
+function SortHeader({
+  column,
+  label,
+  sort,
+  onSort,
+  className = '',
+}: {
+  column: SortKey
+  label: string
+  sort: Sort | null
+  onSort: (key: SortKey) => void
+  className?: string
+}) {
+  const active = sort?.key === column
+  return (
+    <th
+      className={`px-3 py-2 font-medium ${className}`}
+      aria-sort={active ? (sort.desc ? 'descending' : 'ascending') : 'none'}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={`inline-flex items-center gap-1 transition hover:text-zinc-200 ${active ? 'text-zinc-200' : ''}`}
+      >
+        {label}
+        <IconChevronUp
+          size={12}
+          className={`transition ${active ? (sort.desc ? 'rotate-180' : '') : 'opacity-0'}`}
+        />
+      </button>
+    </th>
   )
 }
 

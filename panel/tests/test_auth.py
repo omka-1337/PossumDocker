@@ -102,6 +102,33 @@ def test_admin_manages_users(client):
     assert client.delete(f"/api/users/{user['id']}").status_code == 204
 
 
+def test_email_is_optional_and_belongs_to_one_user(client):
+    plain = client.post("/api/users", json={"username": "plain", "password": PASSWORD}).json()
+    assert plain["email"] is None
+
+    bad = client.post("/api/users", json={"username": "bad", "password": PASSWORD, "email": "not-an-email"})
+    assert set(bad.json()["detail"]["errors"]) == {"email"}
+
+    # Stored lowercase, so the same address can't come back in another spelling.
+    owner = client.post(
+        "/api/users", json={"username": "owner", "password": PASSWORD, "email": "Owner@Example.COM"}
+    ).json()
+    assert owner["email"] == "owner@example.com"
+    taken = client.post(
+        "/api/users", json={"username": "other", "password": PASSWORD, "email": "owner@example.com"}
+    )
+    assert taken.status_code == 422
+    assert client.patch(f"/api/users/{plain['id']}", json={"email": "owner@example.com"}).status_code == 422
+
+    # Keeping your own address is fine; an empty field gives it up.
+    assert client.patch(f"/api/users/{owner['id']}", json={"email": "owner@example.com"}).status_code == 200
+    assert client.patch(f"/api/users/{owner['id']}", json={"email": ""}).json()["email"] is None
+    assert client.patch(f"/api/users/{plain['id']}", json={"email": "owner@example.com"}).status_code == 200
+
+    login(client, "plain", PASSWORD)
+    assert client.get("/api/auth/me").json()["email"] == "owner@example.com"
+
+
 def test_there_is_always_an_active_admin(client):
     me = client.get("/api/auth/me").json()
     assert client.patch(f"/api/users/{me['id']}", json={"is_admin": False}).status_code == 409

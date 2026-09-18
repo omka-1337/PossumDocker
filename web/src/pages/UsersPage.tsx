@@ -1,4 +1,4 @@
-import { IconKey, IconLock, IconLockOpen, IconShield, IconShieldOff, IconTrash, IconUserPlus } from '@tabler/icons-react'
+import { IconAt, IconKey, IconLock, IconLockOpen, IconShield, IconShieldOff, IconTrash, IconUserPlus } from '@tabler/icons-react'
 import { useState, type FormEvent } from 'react'
 import { useMe, useUserActions, useUsers, type UserInfo } from '../api/auth'
 import { ApiError } from '../api/client'
@@ -12,6 +12,7 @@ export function UsersPage() {
   const actions = useUserActions()
   const [creating, setCreating] = useState(false)
   const [resetting, setResetting] = useState<UserInfo | null>(null)
+  const [editingEmail, setEditingEmail] = useState<UserInfo | null>(null)
   const [deleting, setDeleting] = useState<UserInfo | null>(null)
 
   if (!me?.is_admin) return <p className="p-8 text-muted">only administrators can manage users.</p>
@@ -48,11 +49,19 @@ export function UsersPage() {
                     {user.is_admin && <span className="rounded-full bg-raised px-2 py-0.5 text-xs font-normal text-amber-300">admin</span>}
                     {user.disabled && <span className="rounded-full bg-raised px-2 py-0.5 text-xs font-normal text-red-300">disabled</span>}
                   </div>
-                  <div className="text-xs text-muted">
+                  <div className="truncate text-xs text-muted">
+                    {user.email && `${user.email} · `}
                     since {formatDate(Date.parse(user.created_at) / 1000)}
                     {!user.is_admin && ` · ${user.servers} ${user.servers === 1 ? 'server' : 'servers'}`}
                   </div>
                 </div>
+                <IconButton
+                  onClick={() => setEditingEmail(user)}
+                  aria-label="email"
+                  title={user.email ? `email: ${user.email}` : 'add an email address'}
+                >
+                  <IconAt size={18} className={user.email ? '' : 'opacity-50'} />
+                </IconButton>
                 <IconButton onClick={() => setResetting(user)} aria-label="set password" title="set password">
                   <IconKey size={18} />
                 </IconButton>
@@ -85,6 +94,7 @@ export function UsersPage() {
 
       {creating && <CreateUserDialog onClose={() => setCreating(false)} />}
       {resetting && <SetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}
+      {editingEmail && <EmailDialog user={editingEmail} onClose={() => setEditingEmail(null)} />}
       {deleting && (
         <Modal title={`delete "${deleting.username}"?`} onClose={() => setDeleting(null)}>
           <p className="mb-5 text-sm text-muted">they lose access to every server. servers themselves are not touched.</p>
@@ -109,13 +119,14 @@ export function UsersPage() {
 function CreateUserDialog({ onClose }: { onClose: () => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const { create } = useUserActions()
   const errors = create.error instanceof ApiError ? create.error.fieldErrors : {}
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    create.mutate({ username: username.trim(), password, is_admin: isAdmin }, { onSuccess: onClose })
+    create.mutate({ username: username.trim(), password, email: email.trim() || null, is_admin: isAdmin }, { onSuccess: onClose })
   }
 
   return (
@@ -129,6 +140,10 @@ function CreateUserDialog({ onClose }: { onClose: () => void }) {
           <input type="password" autoComplete="new-password" placeholder="password (8+ characters)" aria-label="password" className={inputClass} value={password} onChange={(e) => setPassword(e.target.value)} />
           <FieldError error={errors.password} />
         </div>
+        <div>
+          <input type="email" autoComplete="off" placeholder="email (optional)" aria-label="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
+          <FieldError error={errors.email} />
+        </div>
         <div className="flex items-center justify-between gap-4 rounded-xl bg-raised px-3 py-2.5 text-sm">
           <span>
             administrator
@@ -139,6 +154,41 @@ function CreateUserDialog({ onClose }: { onClose: () => void }) {
         {create.error && !Object.keys(errors).length && <p className="text-sm text-red-400">{create.error.message}</p>}
         <Button type="submit" variant="primary" className="w-full" disabled={!username.trim() || password.length < 8 || create.isPending}>
           create
+        </Button>
+      </form>
+    </Modal>
+  )
+}
+
+function EmailDialog({ user, onClose }: { user: UserInfo; onClose: () => void }) {
+  const [email, setEmail] = useState(user.email ?? '')
+  const { update } = useUserActions()
+  const errors = update.error instanceof ApiError ? update.error.fieldErrors : {}
+
+  return (
+    <Modal title={`email for ${user.username}`} onClose={onClose}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          // An empty field removes the address the user has.
+          update.mutate({ id: user.id, email: email.trim() }, { onSuccess: onClose })
+        }}
+        className="space-y-4"
+      >
+        <input
+          autoFocus
+          type="email"
+          autoComplete="off"
+          placeholder="name@example.com"
+          aria-label="email"
+          className={inputClass}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <FieldError error={errors.email} />
+        <p className="text-xs text-muted">optional, and only for getting in touch: logging in still goes by name.</p>
+        <Button type="submit" variant="primary" className="w-full" disabled={update.isPending}>
+          {email.trim() ? 'save' : 'remove'}
         </Button>
       </form>
     </Modal>

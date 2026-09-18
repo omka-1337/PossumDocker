@@ -29,6 +29,8 @@ export const PERMISSIONS: { value: Permission; label: string; help: string }[] =
 export interface Me {
   id: string
   username: string
+  // Optional: null when the account has no address.
+  email: string | null
   is_admin: boolean
 }
 
@@ -112,12 +114,22 @@ export function useUserActions() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: usersKey })
   return {
     create: useMutation({
-      mutationFn: (body: { username: string; password: string; is_admin: boolean }) =>
+      mutationFn: (body: { username: string; password: string; email: string | null; is_admin: boolean }) =>
         api<UserInfo>('/users', { method: 'POST', body: JSON.stringify(body) }),
       onSettled: refresh,
     }),
     update: useMutation({
-      mutationFn: ({ id, ...body }: { id: string; password?: string; is_admin?: boolean; disabled?: boolean }) =>
+      mutationFn: ({
+        id,
+        ...body
+      }: {
+        id: string
+        password?: string
+        // "": remove the address the user has.
+        email?: string
+        is_admin?: boolean
+        disabled?: boolean
+      }) =>
         api<UserInfo>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
       onSettled: refresh,
     }),

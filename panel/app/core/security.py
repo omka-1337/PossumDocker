@@ -8,6 +8,8 @@ from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatc
 _hasher = PasswordHasher()  # argon2id with the library's current recommended parameters
 
 USERNAME = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+# Deliberately loose: an address is only worth having if people can type theirs in.
+EMAIL = re.compile(r"^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$")
 MIN_PASSWORD = 8
 
 
@@ -30,6 +32,14 @@ def needs_rehash(password_hash: str) -> bool:
 def username_error(username: str) -> str | None:
     if not USERNAME.fullmatch(username):
         return "3–32 characters: letters, digits, _ . -"
+    return None
+
+
+def email_error(email: str) -> str | None:
+    if len(email) > 255:
+        return "too long"
+    if not EMAIL.fullmatch(email):
+        return "not an email address"
     return None
 
 

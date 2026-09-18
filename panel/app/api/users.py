@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from app.api.deps import Session
 from app.core.auth import Admin, CurrentUser, server_permissions
 from app.core.permissions import ALL, Permission
-from app.core.security import hash_password, password_error, username_error
+from app.core.security import email_error, hash_password, password_error, username_error
 from app.models import Server, ServerAccess, User, UserSession
 
 router = APIRouter(tags=["users"])
@@ -16,6 +16,8 @@ router = APIRouter(tags=["users"])
 class UserInfo(BaseModel):
     id: str
     username: str
+    # None: none was given; it is optional.
+    email: str | None
     is_admin: bool
     disabled: bool
     created_at: datetime
@@ -26,11 +28,14 @@ class UserInfo(BaseModel):
 class UserCreate(BaseModel):
     username: str = Field(max_length=64)
     password: str = Field(max_length=1024)
+    email: str | None = Field(default=None, max_length=255)
     is_admin: bool = False
 
 
 class UserUpdate(BaseModel):
     password: str | None = Field(default=None, max_length=1024)
+    # "": remove the address the user has; None: leave it as it is.
+    email: str | None = Field(default=None, max_length=255)
     is_admin: bool | None = None
     disabled: bool | None = None
 
@@ -44,6 +49,31 @@ class AccessEntry(BaseModel):
 
 class AccessUpdate(BaseModel):
     permissions: list[Permission]
+
+
+def to_info(user: User, servers: int) -> UserInfo:
+    return UserInfo(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        is_admin=user.is_admin,
+        disabled=user.disabled,
+        created_at=user.created_at,
+        servers=servers,
+    )
+
+
+async def _email_or_error(
+    session: Session, email: str, user_id: str | None = None
+) -> tuple[str | None, str | None]:
+    """The address as it will be stored (lowercase, empty means none), or why it can't be."""
+    address = email.strip().lower()
+    if not address:
+        return None, None
+    if error := email_error(address):
+        return None, error
+    taken = await session.scalar(select(User).where(User.email == address, User.id != user_id))
+    return address, "already used by another user" if taken else None
 
 
 async def _user_or_404(session: Session, user_id: str) -> User:
@@ -67,17 +97,7 @@ async def list_users(session: Session, admin: Admin) -> list[UserInfo]:
         ).all()
     )
     users = await session.scalars(select(User).order_by(User.created_at))
-    return [
-        UserInfo(
-            id=u.id,
-            username=u.username,
-            is_admin=u.is_admin,
-            disabled=u.disabled,
-            created_at=u.created_at,
-            servers=counts.get(u.id, 0),
-        )
-        for u in users
-    ]
+    return [to_info(u, counts.get(u.id, 0)) for u in users]
 
 
 @router.post("/users", status_code=status.HTTP_201_CREATED)
@@ -90,19 +110,20 @@ async def create_user(body: UserCreate, session: Session, admin: Admin) -> UserI
         errors["username"] = "already taken"
     if error := password_error(body.password):
         errors["password"] = error
+    email, error = await _email_or_error(session, body.email or "")
+    if error:
+        errors["email"] = error
     if errors:
         raise HTTPException(422, {"errors": errors})
-    user = User(username=username, password_hash=hash_password(body.password), is_admin=body.is_admin)
+    user = User(
+        username=username,
+        email=email,
+        password_hash=hash_password(body.password),
+        is_admin=body.is_admin,
+    )
     session.add(user)
     await session.commit()
-    return UserInfo(
-        id=user.id,
-        username=user.username,
-        is_admin=user.is_admin,
-        disabled=False,
-        created_at=user.created_at,
-        servers=0,
-    )
+    return to_info(user, 0)
 
 
 @router.patch("/users/{user_id}")
@@ -119,6 +140,11 @@ async def update_user(user_id: str, body: UserUpdate, session: Session, admin: A
         if error := password_error(body.password):
             raise HTTPException(422, {"errors": {"password": error}})
         user.password_hash, logout = hash_password(body.password), True
+    if body.email is not None:
+        email, error = await _email_or_error(session, body.email, user.id)
+        if error:
+            raise HTTPException(422, {"errors": {"email": error}})
+        user.email = email
     if body.is_admin is not None:
         user.is_admin = body.is_admin
     if body.disabled is not None:
@@ -130,14 +156,7 @@ async def update_user(user_id: str, body: UserUpdate, session: Session, admin: A
     servers = await session.scalar(
         select(func.count()).select_from(ServerAccess).where(ServerAccess.user_id == user.id)
     )
-    return UserInfo(
-        id=user.id,
-        username=user.username,
-        is_admin=user.is_admin,
-        disabled=user.disabled,
-        created_at=user.created_at,
-        servers=servers or 0,
-    )
+    return to_info(user, servers or 0)
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

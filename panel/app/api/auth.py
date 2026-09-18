@@ -24,6 +24,7 @@ throttle = LoginThrottle()
 class UserRead(BaseModel):
     id: str
     username: str
+    email: str | None
     is_admin: bool
 
 
@@ -61,7 +62,7 @@ async def login(body: LoginBody, request: Request, response: Response, session: 
     token = await create_session(session, user)
     await session.commit()
     set_session_cookie(response, request, token)
-    return UserRead(id=user.id, username=user.username, is_admin=user.is_admin)
+    return UserRead(id=user.id, username=user.username, email=user.email, is_admin=user.is_admin)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -74,7 +75,7 @@ async def logout(request: Request, response: Response, session: Session, user: C
 
 @router.get("/me")
 async def me(user: CurrentUser) -> UserRead:
-    return UserRead(id=user.id, username=user.username, is_admin=user.is_admin)
+    return UserRead(id=user.id, username=user.username, email=user.email, is_admin=user.is_admin)
 
 
 @router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
